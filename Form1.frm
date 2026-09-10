@@ -679,8 +679,6 @@ Option Explicit
 
 Dim lCol As Long, Item As Long
 
-
-
 Private Sub axConGrid_Click(lColumn As Long, lItem As Long, iColumnTo As Long, iLineTo As Long, iCurveTo As Long)
 If iLineTo = -1 Then
   lblInfo.Caption = "El Item:" & lItem & " de la Columna:" & lColumn & " no tiene Linea"
@@ -714,7 +712,6 @@ Private Sub chkLabelVisible_Click()
 axConGrid.BadgeVisible = chkLabelVisible.Value
 End Sub
 
-
 Private Sub chkClickable_Click()
 axConGrid.Clickable = chkClickable.Value
 End Sub
@@ -733,83 +730,88 @@ Form_Load
 End Sub
 
 Private Sub cmdRemoveItem_Click()
-
 Call axConGrid.RemoveItem(lCol, Item)
-
 End Sub
 
 Private Sub cmdAddItem_Click()
-
 axConGrid.AddItem lCol, "NewItem_X", "--------", "000", , , , , , , True
-
 End Sub
 
 Private Sub Form_Load()
 Dim I As Long
 
+chkColsMoveable.Value = 1
+chkClickable.Value = 1
 
 With axConGrid
-  
   .Redraw = False
 
-  .AddColumn "Column1", 180, 0, 0, vbBlack, vbRed, True
-  .AddColumn "Column2", 180, 350, 0, vbRed, vbBlack, True
-  .AddColumn "Column3", 150, 650, 100, vbGreen, vbBlue, True
+  .AddColumn "Column1", 180, 20, 20, vbBlack, vbRed, True
+  .AddColumn "Column2", 180, 400, 50, vbRed, vbBlack, True
+  .AddColumn "Column3", 160, 780, 120, vbGreen, vbBlue, True
   
+  For I = 0 To 8
+      .AddItem 0, "Item_0_" & I, "SubText_" & I, "ID:" & I, , , , , "eec" & IIf(I <= 9, I, I - 9), , True
+  Next I
+  
+  For I = 0 To 14
+      .AddItem 1, "Item_1_" & I, "SubText_" & I, "ID:" & I, , , , , "eec" & IIf(I <= 9, I, I - 9), , True
+  Next I
+    
   For I = 0 To 6
-      .AddItem 0, "Itemtext_" & I, "SubText_" & I, "Item " & I, , , , , "eec" & IIf(I <= 9, I, I - 9), , True
-  Next I
-  
-  For I = 0 To 9
-      .AddItem 1, "Item0_" & I, "SubText_" & I, "Item " & I, , , , , "eec" & IIf(I <= 9, I, I - 9), , True
+      .AddItem 2, "Item_2_" & I, "SubText_" & I, "ID:" & I, , , , , "eec" & IIf(I <= 9, I, I - 9), , True
   Next I
     
-  For I = 0 To 4
-      .AddItem 2, "Itemtext_" & I, "SubText_" & I, "Item " & I, , , , , "eec" & IIf(I <= 9, I, I - 9), , True
-  Next I
-    
-  'Para agregar Líneas por código descomenta las siguientes lineas...
-  ' ADDLINE(itemLeft, itemRight, LineStyle, StartAnchor, EndAnchor, StartColor, EndColor, LineWidth, Opacity, Visible)
-  .AddLine 0, 1, 1, 3, DashStyleDot, LineCapSquareAnchor, LineCapArrowAnchor, vbBlack, vbRed, 5, 100, True
-  .AddLine 0, 0, 1, 0, DashStyleDot, LineCapArrowAnchor, LineCapArrowAnchor, vbBlack, vbRed, 5, 100, True
-  .AddLine 1, 2, 0, 5, DashStyleDot, LineCapRoundAnchor, LineCapArrowAnchor, vbBlack, vbRed, 5, 100, True
-  .AddLine 2, 2, 1, 2, DashStyleDot, LineCapRoundAnchor, LineCapArrowAnchor, vbBlack, vbRed, 5, 50, True
-  .AddLine 2, 1, 1, 1, DashStyleDot, LineCapRoundAnchor, LineCapArrowAnchor, vbGreen, vbBlue, 5, 50, True
+  ' Relaciones estilo DBMapping (Curvas Bezier dinamicas)
+  .AddLine 0, 1, 1, 3, DashStyleDot, LineCapSquareAnchor, LineCapArrowAnchor, vbBlack, vbRed, 3, 100, True
+  .AddLine 0, 0, 1, 0, DashStyleSolid, LineCapRoundAnchor, LineCapArrowAnchor, vbBlack, vbBlue, 3, 100, True
+  .AddLine 0, 4, 1, 7, DashStyleSolid, LineCapRoundAnchor, LineCapArrowAnchor, vbBlack, vbRed, 3, 100, True
+  .AddLine 1, 2, 2, 1, DashStyleSolid, LineCapRoundAnchor, LineCapArrowAnchor, vbBlack, vbGreen, 3, 100, True
+  .AddLine 1, 8, 2, 5, DashStyleDot, LineCapRoundAnchor, LineCapArrowAnchor, vbRed, vbBlue, 3, 90, True
+  .AddLine 2, 3, 0, 6, DashStyleSolid, LineCapRoundAnchor, LineCapArrowAnchor, vbGreen, vbBlack, 3, 80, True
 
+  List1.Clear
   List1.AddItem "toLeft"
   List1.AddItem "toRight"
   List1.AddItem "Auto"
   
+  List2.Clear
   List2.AddItem "eLeft"
   List2.AddItem "eCenter"
   List2.AddItem "eRight"
   
+  List3.Clear
   List3.AddItem "eTop"
   List3.AddItem "eMiddle"
   List3.AddItem "eBottom"
           
+  List4.Clear
   List4.AddItem "vbNone"
   List4.AddItem "vbLabel"
   List4.AddItem "vbIcon"
   
+  List5.Clear
   List5.AddItem "eTop"
   List5.AddItem "eMiddle"
   List5.AddItem "eBottom"
   
+  List6.Clear
   List6.AddItem "eLeft"
   List6.AddItem "eCenter"
   List6.AddItem "eRight"
   
+  List7.Clear
   List7.AddItem "scNone"
   List7.AddItem "scAllways"
   List7.AddItem "scOnlyActive"
   List7.AddItem "scAllPastPoint"
 
-  .BorderWidth = txtBorderWidth.Text
-  .ColWidth = txtColWidth.Text
+  .BorderWidth = Val(txtBorderWidth.Text)
+  .ColWidth = Val(txtColWidth.Text)
   .Clickable = chkClickable.Value
-  .ItemHeight = txtItemSize.Text
-  .BoxOpacity = txtOpacity.Text
+  .ColsMoveable = chkColsMoveable.Value
+  .ItemHeight = Val(txtItemSize.Text)
+  .BoxOpacity = Val(txtOpacity.Text)
   .TextAlignH = eLeft
   .SubTextAlignH = eLeft
   .SubTextAlignV = eTop
@@ -821,8 +823,6 @@ With axConGrid
   
   .Redraw = True
 End With
-
- 
 End Sub
 
 Private Sub Form_Resize()
@@ -830,7 +830,6 @@ lblColumn.Move 50, 50
 lblInfo.Move 100 + lblColumn.Width, 50
 Frame1.Move 50, Me.ScaleHeight - (Frame1.Height)
 axConGrid.Move 50, lblColumn.Height + 100, Me.ScaleWidth - 100, Me.ScaleHeight - (Frame1.Height + lblColumn.Height + 100)
-
 End Sub
 
 Private Sub List1_Click()
@@ -844,7 +843,6 @@ End Sub
 Private Sub List3_Click()
 axConGrid.TextAlignV = List3.ListIndex
 End Sub
-
 
 Private Sub List4_Click()
 axConGrid.BadgeType = List4.ListIndex
@@ -879,31 +877,30 @@ End Sub
 
 Private Sub txtLineWidth_Change()
 On Error Resume Next
-axConGrid.LineWidth = txtLineWidth.Text
+axConGrid.LineWidth = Val(txtLineWidth.Text)
 End Sub
 
 Private Sub txtBorderWidth_Change()
 On Error Resume Next
-axConGrid.BorderWidth = txtBorderWidth.Text
+axConGrid.BorderWidth = Val(txtBorderWidth.Text)
 End Sub
 
 Private Sub txtCurve_Change()
 On Error Resume Next
-axConGrid.CornerCurve = txtCurve.Text
+axConGrid.CornerCurve = Val(txtCurve.Text)
 End Sub
 
 Private Sub txtOpacity_Change()
 On Error Resume Next
-axConGrid.BoxOpacity = txtOpacity.Text
+axConGrid.BoxOpacity = Val(txtOpacity.Text)
 End Sub
 
 Private Sub txtColWidth_Change()
 On Error Resume Next
-axConGrid.ColWidth = txtColWidth.Text
+axConGrid.ColWidth = Val(txtColWidth.Text)
 End Sub
 
 Private Sub txtItemSize_Change()
 On Error Resume Next
-axConGrid.ItemHeight = txtItemSize.Text
+axConGrid.ItemHeight = Val(txtItemSize.Text)
 End Sub
-

@@ -29,39 +29,23 @@ Begin VB.UserControl AxConGrid
       Left            =   4455
       Top             =   135
       Width           =   165
-      _ExtentX        =   291
-      _ExtentY        =   5953
-      Style           =   4
-      ShowButtons     =   0   'False
-      BeginProperty ThumbTooltipFont {0BE35203-8F91-11CE-9DE3-00AA004BB851} 
-         Name            =   "Tahoma"
-         Size            =   8.25
-         Charset         =   0
-         Weight          =   400
-         Underline       =   0   'False
-         Italic          =   0   'False
-         Strikethrough   =   0   'False
-      EndProperty
+      _extentx        =   291
+      _extenty        =   5953
+      style           =   4
+      showbuttons     =   0
+      thumbtooltipfont=   "AxConGrid.ctx":0323
    End
    Begin AxConectionGrid.ucScrollbar ucScrollH 
       Height          =   165
       Left            =   75
       Top             =   3225
       Width           =   4215
-      _ExtentX        =   7435
-      _ExtentY        =   291
-      Orientation     =   1
-      Style           =   4
-      ShowButtons     =   0   'False
-      BeginProperty ThumbTooltipFont {0BE35203-8F91-11CE-9DE3-00AA004BB851} 
-         Name            =   "Tahoma"
-         Size            =   8.25
-         Charset         =   0
-         Weight          =   400
-         Underline       =   0   'False
-         Italic          =   0   'False
-         Strikethrough   =   0   'False
-      EndProperty
+      _extentx        =   7435
+      _extenty        =   291
+      orientation     =   1
+      style           =   4
+      showbuttons     =   0
+      thumbtooltipfont=   "AxConGrid.ctx":034B
    End
 End
 Attribute VB_Name = "AxConGrid"
@@ -70,14 +54,14 @@ Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = True
 '-UC-VB6-----------------------------
-'UC Name  : AxCompareGrid
-'Version  : 0.01.00b
+'UC Name  : AxRelationsGrid
+'Version  : 0.03.01a
 'Editor   : David Rojas [AxioUK]
-'Date     : 27/09/2022
+'Date     : 2026-09-10
 '------------------------------------
 Option Explicit
 
-Const sVersion = "0.01.0b"
+Const sVersion = "0.03.01a"
 
 Private Declare Function MulDiv Lib "kernel32.dll" (ByVal nNumber As Long, ByVal nNumerator As Long, ByVal nDenominator As Long) As Long
 Private Declare Function TlsGetValue Lib "kernel32.dll" (ByVal dwTlsIndex As Long) As Long
@@ -91,9 +75,19 @@ Private Declare Function LoadCursor Lib "user32" Alias "LoadCursorA" (ByVal hIns
 Private Declare Function DestroyCursor Lib "user32" (ByVal hCursor As Long) As Long
 Private Declare Function OleCreatePictureIndirect Lib "olepro32.dll" (PicDesc As PicBmp, RefIID As Any, ByVal fPictureOwnsHandle As Long, IPic As IPicture) As Long
 
+' GDI BackBuffer APIs
+Private Declare Function CreateCompatibleDC Lib "gdi32.dll" (ByVal hdc As Long) As Long
+Private Declare Function DeleteDC Lib "gdi32.dll" (ByVal hdc As Long) As Long
+Private Declare Function CreateCompatibleBitmap Lib "gdi32.dll" (ByVal hdc As Long, ByVal nWidth As Long, ByVal nHeight As Long) As Long
+Private Declare Function SelectObject Lib "gdi32.dll" (ByVal hdc As Long, ByVal hObject As Long) As Long
+Private Declare Function DeleteObject Lib "gdi32.dll" (ByVal hObject As Long) As Long
+Private Declare Function BitBlt Lib "gdi32.dll" (ByVal hDestDC As Long, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hSrcDC As Long, ByVal xSrc As Long, ByVal ySrc As Long, ByVal dwRop As Long) As Long
+
+' GDI+ APIs
 Private Declare Function GdiplusStartup Lib "GdiPlus.dll" (Token As Long, inputbuf As GDIPlusStartupInput, Optional ByVal outputbuf As Long = 0) As Long
 Private Declare Sub GdiplusShutdown Lib "GdiPlus.dll" (ByVal Token As Long)
 Private Declare Function GdipCreateFromHDC Lib "GdiPlus.dll" (ByVal mhDC As Long, ByRef mGraphics As Long) As Long
+Private Declare Function GdipGraphicsClear Lib "GdiPlus.dll" (ByVal mGraphics As Long, ByVal mColor As Long) As Long
 Private Declare Function GdipCreatePen1 Lib "GdiPlus.dll" (ByVal mColor As Long, ByVal mWidth As Single, ByVal mUnit As Long, ByRef mPen As Long) As Long
 Private Declare Function GdipDeleteGraphics Lib "GdiPlus.dll" (ByVal mGraphics As Long) As Long
 Private Declare Function GdipDeleteBrush Lib "GdiPlus.dll" (ByVal Brush As Long) As Long
@@ -351,7 +345,6 @@ Public Event MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Sing
 Private hFontCollection As Long
 Private GdipToken   As Long
 Private nScale      As Single
-Private hGraphics   As Long
 Private hCur        As Long
 Private m_ImageType As eImageType
 
@@ -363,7 +356,7 @@ Private m_Col()         As tColumn
 Private mCol            As Long
 Private m_ColWidth      As Long
 Private m_ActiveCol     As Long
-Private m_ItemHeight      As Long
+Private m_ItemHeight    As Long
 Private m_ActiveItem()  As Long
 Private m_SelectItem()  As Long
 
@@ -418,14 +411,22 @@ Private m_X1        As Single
 Private m_Y1        As Single
 Private m_X2        As Single
 Private m_Y2        As Single
-Private m_X3        As Single
-Private m_Y3        As Single
-Private m_X4        As Single
-Private m_Y4        As Single
 
 Private m_DefaultSide  As tSide
 Private m_ColsMoveable As Boolean
 Private mRedraw        As Boolean
+
+' Double Buffering Variables
+Private m_hMemDC        As Long
+Private m_hMemBmp       As Long
+Private m_hOldBmp       As Long
+Private m_MemWidth      As Long
+Private m_MemHeight     As Long
+
+' Drag and Drop variables
+Private m_DragOffsetX   As Single
+Private m_DragOffsetY   As Single
+Private m_IsDragging    As Boolean
 
 
 Public Function AddColumn(Optional sCaption As String, Optional lWidth As Long, _
@@ -455,7 +456,6 @@ m_ActiveItem(C) = -1
 m_SelectItem(C) = -1
 
 Refresh
-
 End Function
 
 Public Function AddItem(ByVal lColumn As Long, ByVal eText As String, Optional eSubText As String = "", Optional eLabel As String = "", _
@@ -490,7 +490,6 @@ m_ActiveItem(lColumn) = -1
 m_SelectItem(lColumn) = -1
 
 If eVisible Then Refresh
-
 End Function
 
 Public Function AddLine(ByVal lColStart As Long, ByVal ItemStart As Long, ByVal lColEnd As Long, ByVal ItemEnd As Long, Optional lStyle As DashStyle = 0, _
@@ -499,7 +498,6 @@ Public Function AddLine(ByVal lColStart As Long, ByVal ItemStart As Long, ByVal 
                         Optional lLineWidth As Single = 5, Optional lOpacity As Long = 50, _
                         Optional bVisible As Boolean = True)
 On Error Resume Next
-Dim s As Long, C As Long, X As Long
 Dim Side As tSide
 
 If lColStart > lColEnd Then
@@ -513,7 +511,6 @@ If m_Col(lColEnd).Cell(ItemEnd).LineTo = ItemStart And m_Col(lColEnd).Cell(ItemE
     .LineStartCap = .LineEndCap
     .LineStartColor = .LineEndColor
   End With
-  
 Else
   With m_Col(lColStart).Cell(ItemStart)
     .ColumnTo = lColEnd
@@ -528,7 +525,6 @@ Else
     .LineOpacity = lOpacity
     .LineVisible = bVisible
   End With
-
 End If
 
 If bVisible Then Refresh
@@ -548,7 +544,6 @@ If m_Col(lColumn).Cell(ItemEnd).CurveTo = ItemStart Then
     .LineEndColor = .LineStartColor
     .LineVisible = bVisible
   End With
-
 Else
   With m_Col(lColumn).Cell(ItemStart)
     .CurveTo = ItemEnd
@@ -564,7 +559,6 @@ Else
     .LineOpacity = lOpacity
     .LineVisible = bVisible
   End With
-  
 End If
 
 If bVisible Then Refresh
@@ -582,77 +576,122 @@ Public Sub Clear()
     Refresh
 End Sub
 
+Public Sub GetCanvasBounds(ByRef MaxX As Long, ByRef MaxY As Long)
+    Dim C As Long, bR As Long, bB As Long
+    MaxX = 0
+    MaxY = 0
+    If ColCount <= 0 Then Exit Sub
+    
+    For C = 0 To ColCount - 1
+        If m_Col(C).Visible Then
+            bR = m_Col(C).StartX + m_Col(C).Width + 30
+            bB = m_Col(C).StartY + (ItemCount(C) + 1) * m_ItemHeight + 40
+            If bR > MaxX Then MaxX = bR
+            If bB > MaxY Then MaxY = bB
+        End If
+    Next C
+End Sub
+
+Private Sub UpdateScrollBars()
+    Dim MaxX As Long, MaxY As Long
+    Dim vMax As Long, hMax As Long
+    
+    If ColCount <= 0 Then
+        ucScrollV.Visible = False
+        ucScrollH.Visible = False
+        Exit Sub
+    End If
+    
+    GetCanvasBounds MaxX, MaxY
+    
+    If MaxY > UserControl.ScaleHeight Then
+        vMax = MaxY - UserControl.ScaleHeight + 30
+        With ucScrollV
+            .Max = vMax
+            If .Value > vMax Then .Value = vMax
+            .Visible = True
+            .TrackMouseWheelOnHwnd UserControl.hwnd
+        End With
+    Else
+        With ucScrollV
+            .Max = 0
+            .Value = 0
+            .Visible = False
+        End With
+    End If
+    
+    If MaxX > UserControl.ScaleWidth Then
+        hMax = MaxX - UserControl.ScaleWidth + 30
+        With ucScrollH
+            .Max = hMax
+            If .Value > hMax Then .Value = hMax
+            .Visible = True
+            .TrackMouseWheelOnHwnd UserControl.hwnd
+        End With
+    Else
+        With ucScrollH
+            .Max = 0
+            .Value = 0
+            .Visible = False
+        End With
+    End If
+End Sub
+
 Public Sub Refresh()
-Dim C As Long
-On Error Resume Next
-
-    With ucScrollV
-      .Max = ((m_ItemHeight + m_BorderWidth) * MaxItemCount) - (UserControl.ScaleHeight - 50)
-      If .Max > 0 Then
-        .Visible = True
-        .TrackMouseWheelOnHwnd UserControl.hwnd
-      Else
-        .Visible = False
-        .TrackMouseWheelOnHwndStop
-      End If
-    End With
-    
-    With ucScrollH
-      C = UBound(m_Col)
-      If C <= 0 Then Exit Sub
-      .Max = (m_Col(C).StartX + m_Col(C).Width + 50) - (UserControl.ScaleWidth)
-      If .Max > 0 Then
-        .Visible = True
-        .TrackMouseWheelOnHwnd UserControl.hwnd
-      Else
-        .Visible = False
-        .TrackMouseWheelOnHwndStop
-      End If
-    End With
-    
-    UserControl.Cls
-    Draw
-
+  On Error Resume Next
+  If mRedraw = False Then Exit Sub
+  UpdateScrollBars
+  Draw
 End Sub
 
 Public Sub RemoveItem(ByVal lColumn As Long, ByVal Item As Long)
-On Local Error Resume Next
-Dim j As Long, L As Long, C As Long
-
-C = IIf(lColumn = 0, 1, 0)
-
-With m_Col(lColumn)
-    
-  If ItemCount(lColumn) > 1 Then
+  On Local Error Resume Next
+  Dim j As Long, C As Long
+  
+  If lColumn < 0 Or lColumn >= ColCount Then Exit Sub
+  If Item < 0 Or Item >= ItemCount(lColumn) Then Exit Sub
+  
+  With m_Col(lColumn)
+    If ItemCount(lColumn) > 1 Then
       For j = Item To UBound(.Cell) - 1
-         LSet .Cell(j) = .Cell(j + 1)
+        .Cell(j) = .Cell(j + 1)
       Next
       ReDim Preserve .Cell(UBound(.Cell) - 1)
-
-  Else
+    Else
       Erase .Cell
-  End If
+    End If
+  End With
   
-End With
-
-With m_Col(C)
-  For j = 0 To UBound(.Cell)
-     .Cell(j).LineTo = IIf(.Cell(j).LineTo >= Item, IIf(.Cell(j).LineTo = Item, -1, .Cell(j).LineTo - 1), .Cell(j).LineTo)
-  Next
-End With
-
-With m_Col(lColumn)
-  For j = 0 To UBound(.Cell)
-     .Cell(j).CurveTo = IIf(.Cell(j).CurveTo >= Item, IIf(.Cell(j).CurveTo = Item, -1, .Cell(j).CurveTo - 1), .Cell(j).CurveTo)
-  Next
-End With
-
-'*2
- m_ActiveItem(lColumn) = -1
- m_SelectItem(lColumn) = -1
- 
- Refresh
- 
+  For C = 0 To ColCount - 1
+    If C <> lColumn Then
+      With m_Col(C)
+        For j = 0 To ItemCount(C) - 1
+          If .Cell(j).ColumnTo = lColumn Then
+            If .Cell(j).LineTo = Item Then
+              .Cell(j).LineTo = -1
+            ElseIf .Cell(j).LineTo > Item Then
+              .Cell(j).LineTo = .Cell(j).LineTo - 1
+            End If
+          End If
+        Next j
+      End With
+    Else
+      With m_Col(C)
+        For j = 0 To ItemCount(C) - 1
+          If .Cell(j).CurveTo = Item Then
+            .Cell(j).CurveTo = -1
+          ElseIf .Cell(j).CurveTo > Item Then
+            .Cell(j).CurveTo = .Cell(j).CurveTo - 1
+          End If
+        Next j
+      End With
+    End If
+  Next C
+  
+  m_ActiveItem(lColumn) = -1
+  m_SelectItem(lColumn) = -1
+  
+  Refresh
 End Sub
 
 Private Function MousePointerHands(ByVal NewValue As Boolean)
@@ -666,7 +705,6 @@ Private Function MousePointerHands(ByVal NewValue As Boolean)
     UserControl.MousePointer = vbDefault
     UserControl.MouseIcon = Nothing
   End If
-
 End Function
 
 Private Function GetSystemHandCursor() As Picture
@@ -691,170 +729,297 @@ Private Function GetSystemHandCursor() As Picture
   End With
   
   Call OleCreatePictureIndirect(Pic, GUID(0), 1, IPic)
-  
   Set GetSystemHandCursor = IPic
 End Function
 
+Private Sub CreateBuffer(ByVal lWidth As Long, ByVal lHeight As Long)
+    If lWidth <= 0 Then lWidth = 1
+    If lHeight <= 0 Then lHeight = 1
+    
+    If lWidth = m_MemWidth And lHeight = m_MemHeight And m_hMemDC <> 0 Then Exit Sub
+    
+    DestroyBuffer
+    
+    Dim hdc As Long
+    hdc = UserControl.hdc
+    m_hMemDC = CreateCompatibleDC(hdc)
+    If m_hMemDC <> 0 Then
+        m_hMemBmp = CreateCompatibleBitmap(hdc, lWidth, lHeight)
+        If m_hMemBmp <> 0 Then
+            m_hOldBmp = SelectObject(m_hMemDC, m_hMemBmp)
+            m_MemWidth = lWidth
+            m_MemHeight = lHeight
+        End If
+    End If
+End Sub
+
+Private Sub DestroyBuffer()
+    If m_hMemDC <> 0 Then
+        If m_hOldBmp <> 0 Then
+            SelectObject m_hMemDC, m_hOldBmp
+            m_hOldBmp = 0
+        End If
+        If m_hMemBmp <> 0 Then
+            DeleteObject m_hMemBmp
+            m_hMemBmp = 0
+        End If
+        DeleteDC m_hMemDC
+        m_hMemDC = 0
+    End If
+    m_MemWidth = 0
+    m_MemHeight = 0
+End Sub
+
 Private Sub Draw()
-Dim rHeader As RECTL, sHeader As RECTS
-Dim CELDA As RECTL, IcoBox As RECTS
-Dim cp1REC As RECTS, cp2REC As RECTS
-Dim rLabel As RECTL, SLabel As RECTS
-Dim IcoBoxL As RECTL
-Dim i As Long, C As Long
-Dim lY As Long, lX As Long
-Dim TopH As Long, lMargen As Long
-Dim mBorder As Long, lBorder As Long
-Dim ucTH As Long
-Dim pGen As Long
-
-If ColCount <= 0 Then Exit Sub
-If mRedraw = False Then Exit Sub
-
-  GdipCreateFromHDC hdc, hGraphics
+  Dim rHeader As RECTL, sHeader As RECTS
+  Dim CELDA As RECTL, IcoBox As RECTS
+  Dim cp1REC As RECTS, cp2REC As RECTS
+  Dim rLabel As RECTL, SLabel As RECTS
+  Dim IcoBoxL As RECTL
+  Dim i As Long, C As Long
+  Dim lY As Long, lX As Long
+  Dim lMargen As Long
+  Dim mBorder As Long, lBorder As Long
+  Dim ucTH As Long
+  Dim pGen As Long
+  Dim hGraphics As Long
+  
+  If ColCount <= 0 Then Exit Sub
+  If mRedraw = False Then Exit Sub
+  
+  CreateBuffer UserControl.ScaleWidth, UserControl.ScaleHeight
+  If m_hMemDC = 0 Then Exit Sub
+  
+  GdipCreateFromHDC m_hMemDC, hGraphics
   GdipSetSmoothingMode hGraphics, SmoothingModeAntiAlias
+  GdipGraphicsClear hGraphics, RGBA(m_BackColor, 100)
 
-  'Valores Bordes
   lBorder = m_BorderWidth * 2 * nScale
   mBorder = m_BorderWidth * nScale
-
   lMargen = (m_CornerCurve / Screen.TwipsPerPixelX) + 5
   
-  'Control BackColor
-  UserControl.BackColor = m_BackColor
-  
-  'Scroll Value
   lY = -ucScrollV.Value
   lX = -ucScrollH.Value
   
-  ucTH = UserControl.TextHeight("Áhj") + 10 * nScale
+  ucTH = UserControl.TextHeight("?hj") + 10 * nScale
   
-For C = 0 To ColCount - 1
-'*1
-  With m_Col(C)
+  ' PASS 0: Calculate ALL cell attachment points in virtual canvas coordinates
+  For C = 0 To ColCount - 1
+    With m_Col(C)
+      For i = 0 To ItemCount(C) - 1
+        pGen = (m_ItemHeight * i) + m_ItemHeight
+        .Cell(i).PointLX = lX + .StartX + mBorder
+        .Cell(i).PointRX = lX + .StartX + .Width + mBorder
+        .Cell(i).PointY = lY + pGen + lBorder + (m_ItemHeight * 0.5) + .StartY
+      Next i
+    End With
+  Next C
 
-    ''DRAW-HEADERS-------------------------------------------------------------------------------------
-    SetRECL rHeader, lX + mBorder + .StartX, lY + lBorder + .StartY, .Width, m_ItemHeight - lBorder
-    SetRECS sHeader, rHeader.Left, rHeader.Top, rHeader.Width, rHeader.Height
-      
-    DrawRoundRect hGraphics, rHeader, RGBA(.BackColor, SafeRange(m_BoxOpacity + 10, 0, 100)), RGBA(m_BorderColor, m_BoxOpacity), m_BorderWidth, m_CornerCurve, True
-    DrawCaption hGraphics, m_Col(C).Header, m_HeaderFont, sHeader, RGBA(.ForeColor, m_FontOpacity), 0, eCenter, eMiddle, 0, 0, False
+  ' LAYER 1: DRAW CONNECTION RELATIONS & CURVES (UNDERNEATH TABLES)
+  For C = 0 To ColCount - 1
+    If m_Col(C).Visible Then
+      For i = 0 To ItemCount(C) - 1
+        With m_Col(C).Cell(i)
+          ' Inter-column relations (LineTo)
+          If .LineTo > -1 And .ColumnTo > -1 And .ColumnTo < ColCount Then
+            If .LineTo < ItemCount(.ColumnTo) And m_Col(.ColumnTo).Visible Then
+              DrawRelationBezier hGraphics, C, i, .ColumnTo, .LineTo, _
+                                 .LineStyle, .LineWidth, .LineStartCap, .LineEndCap, _
+                                 .LineStartColor, .LineEndColor, .LineOpacity
+            End If
+          End If
+          
+          ' Intra-column curves (CurveTo)
+          If .CurveTo > -1 And .CurveTo < ItemCount(C) Then
+            m_X1 = IIf(.SideTo = toLeft, .PointLX, .PointRX)
+            m_Y1 = .PointY
+            m_X2 = IIf(.SideTo = toLeft, m_Col(C).Cell(.CurveTo).PointLX, m_Col(C).Cell(.CurveTo).PointRX)
+            m_Y2 = m_Col(C).Cell(.CurveTo).PointY
+            DrawCurve hGraphics, m_X1, m_Y1, m_X2, m_Y2, .Radius, .SideTo, .Direction, _
+                      .LineStyle, .LineWidth, .LineStartCap, .LineEndCap, _
+                      .LineStartColor, .LineEndColor, .LineOpacity
+          End If
+        End With
+      Next i
+    End If
+  Next C
 
-    ''DRAW COLUMNS---------------------------------------------------------------------------------
-    i = 0
-    Do While i <= ItemCount(C) - 1 And lY < UserControl.ScaleHeight
-      
+  ' LAYER 2: DRAW COLUMNS, HEADERS, CELLS & BADGES (ON TOP)
+  For C = 0 To ColCount - 1
+    With m_Col(C)
+      If .Visible Then
+        ' Draw Header
+        SetRECL rHeader, lX + mBorder + .StartX, lY + lBorder + .StartY, .Width, m_ItemHeight - lBorder
+        SetRECS sHeader, rHeader.Left, rHeader.Top, rHeader.Width, rHeader.Height
+        
+        If rHeader.Left + rHeader.Width >= 0 And rHeader.Left <= UserControl.ScaleWidth And _
+           rHeader.Top + rHeader.Height >= 0 And rHeader.Top <= UserControl.ScaleHeight Then
+            DrawRoundRect hGraphics, rHeader, RGBA(.BackColor, SafeRange(m_BoxOpacity + 10, 0, 100)), RGBA(m_BorderColor, m_BoxOpacity), m_BorderWidth, m_CornerCurve, True
+            DrawCaption hGraphics, .Header, m_HeaderFont, sHeader, RGBA(.ForeColor, m_FontOpacity), 0, eCenter, eMiddle, 0, 0, False
+        End If
+        
+        ' Draw Cells
+        For i = 0 To ItemCount(C) - 1
           pGen = (m_ItemHeight * i) + m_ItemHeight
-
-          If TopH + m_ItemHeight > 0 Then
-
-              'CELDA
-              .Cell(i).PointLX = lX + .StartX - mBorder
-              .Cell(i).PointY = lY + pGen + lBorder + (m_ItemHeight / 2) + .StartY
-              .Cell(i).PointRX = lX + .StartX + (IIf(.Width >= 0, .Width, m_ColWidth)) + mBorder
-
-              SetRECL CELDA, lX + mBorder + .StartX, lY + pGen + lBorder + .StartY, .Width, m_ItemHeight - lBorder
-
-              'Label
+          SetRECL CELDA, lX + mBorder + .StartX, lY + pGen + lBorder + .StartY, .Width, m_ItemHeight - lBorder
+          
+          If CELDA.Left + CELDA.Width >= 0 And CELDA.Left <= UserControl.ScaleWidth And _
+             CELDA.Top + CELDA.Height >= 0 And CELDA.Top <= UserControl.ScaleHeight Then
+             
               SetRECL rLabel, CELDA.Left + ((CELDA.Width / 3) * 2), CELDA.Top + 5, (CELDA.Width / 3) - 5, ucTH - 5
               SetRECS SLabel, CELDA.Left + ((CELDA.Width / 3) * 2), CELDA.Top + 5, (CELDA.Width / 3) - 5, ucTH - 5
-              'IconBox
               SetRECS IcoBox, CELDA.Left + ((CELDA.Width / 3) * 2), CELDA.Top + 5, (CELDA.Width / 3) - 5, CELDA.Height - 10
-              'Text
-              SetRECS cp1REC, CELDA.Left + lMargen, rLabel.Top + mBorder, CELDA.Width - lMargen, CELDA.Height / 2 'ucTH / 2
-              'SubText
-              SetRECS cp2REC, CELDA.Left + lMargen, rLabel.Top + rLabel.Height, CELDA.Width - lMargen, CELDA.Height / 2 'CELDA.Height - ucTH
-              'Draw CELDA
+              SetRECS cp1REC, CELDA.Left + lMargen, rLabel.Top + mBorder, CELDA.Width - lMargen, CELDA.Height / 2
+              SetRECS cp2REC, CELDA.Left + lMargen, rLabel.Top + rLabel.Height, CELDA.Width - lMargen, CELDA.Height / 2
+              
               DrawRoundRect hGraphics, CELDA, RGBA(IIf(i = m_ActiveItem(C), m_ColorActive, m_BoxColor), SafeRange(m_BoxOpacity + 10, 0, 100)), RGBA(IIf(i = m_SelectItem(C), m_BorderColorActive, m_BorderColor), m_BoxOpacity), m_BorderWidth, m_CornerCurve, True
-              'Text
               DrawCaption hGraphics, .Cell(i).Text, m_Font1, cp1REC, RGBA(m_ForeColor1, m_FontOpacity), 0, m_CaptionAlignH, m_CaptionAlignV, 0, 0, False
-
+              
+              Dim bShowSub As Boolean
+              bShowSub = False
               Select Case m_SubTextVisible
-                Case Is = scNone
-                    GoTo dSubText02
                 Case Is = scAllways
-                    GoTo dSubText01
+                  bShowSub = True
                 Case Is = scOnlyActive
-                  If i = m_SelectItem(C) Then
-                    GoTo dSubText01
-                  Else
-                    GoTo dSubText02
-                  End If
+                  If i = m_SelectItem(C) Then bShowSub = True
               End Select
-
-dSubText01:
-              'SubText
-              DrawCaption hGraphics, .Cell(i).SubText, m_Font2, cp2REC, RGBA(m_ForeColor2, m_FontOpacity), 0, m_SubTextAlignH, m_SubTextAlignV, 0, 0, False
-dSubText02:
+              If bShowSub Then
+                DrawCaption hGraphics, .Cell(i).SubText, m_Font2, cp2REC, RGBA(m_ForeColor2, m_FontOpacity), 0, m_SubTextAlignH, m_SubTextAlignV, 0, 0, False
+              End If
+              
+              Dim bShowBadge As Boolean
+              bShowBadge = False
               Select Case m_BadgeVisible
                 Case Is = scAllways
-                    GoTo dDrawIcon0
+                  bShowBadge = True
                 Case Is = scOnlyActive
-                  If i = m_SelectItem(C) Then
-                    GoTo dDrawIcon0
-                  Else
-                    GoTo dNoDrawIcon0
-                  End If
+                  If i = m_SelectItem(C) Then bShowBadge = True
               End Select
-dDrawIcon0:
-              'Label/Badge
-              If m_BadgeType = vbLabel Then
-                DrawRoundRect hGraphics, rLabel, RGBA(m_BorderColor, m_BoxOpacity), RGBA(m_BorderColor, m_BoxOpacity), 1, m_CornerCurve, True
-                DrawCaption hGraphics, .Cell(i).Label, m_LabelFont, SLabel, RGBA(m_ForeColor1, m_FontOpacity), 0, eCenter, eMiddle, 0, 0, False
-              ElseIf m_BadgeType = vbIcon Then
-              'IconChar
-                If m_ImageType = eIconFont Then
-                  DrawCaption hGraphics, .Cell(i).IconChar, IconFont, IcoBox, RGBA(m_IconForeColor, 100), 0, eCenter, eMiddle, 0, 0, True
-                Else
-                  'SetRECL IcoBoxL, CLng(IcoBox.Left + (IcoBox.Width / 4)), CLng(IcoBox.Top + (IcoBox.Height / 4)), CLng(IcoBox.Width / 2), CLng(IcoBox.Height / 2)
-                  SetRECL IcoBoxL, CLng(IcoBox.Left), CLng(IcoBox.Top), CLng(IcoBox.Width), CLng(IcoBox.Height)
-                  LoadPictureFromFile .Cell(i).IconFile
-                  Call GdipSetInterpolationMode(hGraphics, 7&)  'HIGH_QUALYTY_BICUBIC
-                  Call GdipSetPixelOffsetMode(hGraphics, 4&)
-                  GdipDrawImageRectI hGraphics, m_Bmp, IcoBoxL.Left, IcoBoxL.Top, IcoBoxL.Width, IcoBoxL.Height
+              
+              If bShowBadge Then
+                If m_BadgeType = vbLabel Then
+                  DrawRoundRect hGraphics, rLabel, RGBA(m_BorderColor, m_BoxOpacity), RGBA(m_BorderColor, m_BoxOpacity), 1, m_CornerCurve, True
+                  DrawCaption hGraphics, .Cell(i).Label, m_LabelFont, SLabel, RGBA(m_ForeColor1, m_FontOpacity), 0, eCenter, eMiddle, 0, 0, False
+                ElseIf m_BadgeType = vbIcon Then
+                  If m_ImageType = eIconFont Then
+                    DrawCaption hGraphics, .Cell(i).IconChar, IconFont, IcoBox, RGBA(m_IconForeColor, 100), 0, eCenter, eMiddle, 0, 0, True
+                  Else
+                    SetRECL IcoBoxL, CLng(IcoBox.Left), CLng(IcoBox.Top), CLng(IcoBox.Width), CLng(IcoBox.Height)
+                    LoadPictureFromFile .Cell(i).IconFile
+                    Call GdipSetInterpolationMode(hGraphics, 7&)
+                    Call GdipSetPixelOffsetMode(hGraphics, 4&)
+                    GdipDrawImageRectI hGraphics, m_Bmp, IcoBoxL.Left, IcoBoxL.Top, IcoBoxL.Width, IcoBoxL.Height
+                  End If
                 End If
               End If
-
-dNoDrawIcon0:
-            TopH = TopH + m_ItemHeight
+              
           End If
-
-      i = i + 1
-    Loop
-  End With
-Next C
-
-'*3'-DRAW-CONNECTION-LINES---------------------------------------------------------------------------------------
-For C = 0 To ColCount - 1
-  i = 0
-  Do While i <= ItemCount(C) - 1 And lY < UserControl.ScaleHeight
-    With m_Col(C).Cell(i)
-    
-      '-DRAW-LINES---------------------------------------------------------------------------------------
-      If .LineTo > -1 Then
-        m_X1 = IIf(.SideTo = toLeft, .PointLX, .PointRX)
-        m_Y1 = .PointY + .LineWidth
-        m_X2 = IIf(.SideTo = toLeft, m_Col(.ColumnTo).Cell(.LineTo).PointRX, m_Col(.ColumnTo).Cell(.LineTo).PointLX)
-        m_Y2 = m_Col(.ColumnTo).Cell(.LineTo).PointY - .LineWidth
-        DrawLine hGraphics, m_X1, m_Y1, m_X2, m_Y2, .LineStyle, .LineWidth, .LineStartCap, .LineEndCap, .LineStartColor, .LineEndColor, .LineOpacity
+        Next i
       End If
-      '-DRAW-CURVES---------------------------------------------------------------------------------------
-      If .CurveTo > -1 Then
-        m_X1 = IIf(.SideTo = toLeft, .PointLX, .PointRX)
-        m_Y1 = .PointY + .LineWidth
-        m_X2 = IIf(.SideTo = toLeft, m_Col(C).Cell(.CurveTo).PointLX, m_Col(C).Cell(.CurveTo).PointRX)
-        m_Y2 = m_Col(C).Cell(.CurveTo).PointY - .LineWidth
-        DrawCurve hGraphics, m_X1, m_Y1, m_X2, m_Y2, .Radius, .SideTo, .Direction, .LineStyle, .LineWidth, .LineStartCap, .LineEndCap, .LineStartColor, .LineEndColor, .LineOpacity
-      End If
-    
-      i = i + 1
     End With
-  Loop
-Next C
+  Next C
+  
+  GdipDeleteGraphics hGraphics
+  
+  BitBlt UserControl.hdc, 0, 0, UserControl.ScaleWidth, UserControl.ScaleHeight, m_hMemDC, 0, 0, vbSrcCopy
+  UserControl.Refresh
+End Sub
 
-'------------------------------------------------------------------------
- GdipDeleteGraphics hGraphics
-'*1----------------------------------------------------------------------
+Private Sub DrawRelationBezier(ByVal hGraphics As Long, ByVal Col1 As Long, ByVal Item1 As Long, _
+                               ByVal Col2 As Long, ByVal Item2 As Long, _
+                               ByVal fLineStyle As DashStyle, ByVal fLineWidth As Single, _
+                               ByVal fStartCap As LineCap, ByVal fEndCap As LineCap, _
+                               ByVal fStartColor As OLE_COLOR, ByVal fEndColor As OLE_COLOR, _
+                               ByVal fOpacity As Long)
+    Dim P1 As POINTS, P2 As POINTS, P3 As POINTS, P4 As POINTS
+    Dim col1Left As Single, col1Right As Single, Y1 As Single
+    Dim col2Left As Single, col2Right As Single, Y2 As Single
+    Dim dx As Single
+    Dim hPen As Long, hBrush As Long
+    
+    col1Left = m_Col(Col1).Cell(Item1).PointLX
+    col1Right = m_Col(Col1).Cell(Item1).PointRX
+    Y1 = m_Col(Col1).Cell(Item1).PointY
+    
+    col2Left = m_Col(Col2).Cell(Item2).PointLX
+    col2Right = m_Col(Col2).Cell(Item2).PointRX
+    Y2 = m_Col(Col2).Cell(Item2).PointY
+    
+    If col2Left >= col1Right - 10 Then
+        ' Target column is to the right of source column -> S-Curve from Right to Left
+        P1.X = col1Right
+        P1.Y = Y1
+        P4.X = col2Left
+        P4.Y = Y2
+        
+        dx = (P4.X - P1.X) * 0.5
+        If dx < 35 * nScale Then dx = 35 * nScale
+        
+        P2.X = P1.X + dx
+        P2.Y = P1.Y
+        P3.X = P4.X - dx
+        P3.Y = P4.Y
+        
+    ElseIf col2Right <= col1Left + 10 Then
+        ' Target column is to the left of source column -> S-Curve from Left to Right
+        P1.X = col1Left
+        P1.Y = Y1
+        P4.X = col2Right
+        P4.Y = Y2
+        
+        dx = (P1.X - P4.X) * 0.5
+        If dx < 35 * nScale Then dx = 35 * nScale
+        
+        P2.X = P1.X - dx
+        P2.Y = P1.Y
+        P3.X = P4.X + dx
+        P3.Y = P4.Y
+        
+    Else
+        ' Columns overlap horizontally (stacked or partially overlapping) -> C-Curve around side
+        Dim mid1 As Single, mid2 As Single
+        mid1 = (col1Left + col1Right) * 0.5
+        mid2 = (col2Left + col2Right) * 0.5
+        
+        If mid2 >= mid1 Then
+            P1.X = col1Right
+            P1.Y = Y1
+            P4.X = col2Right
+            P4.Y = Y2
+            
+            Dim rMax As Single
+            rMax = IIf(P1.X > P4.X, P1.X, P4.X) + 40 * nScale
+            P2.X = rMax
+            P2.Y = P1.Y
+            P3.X = rMax
+            P3.Y = P4.Y
+        Else
+            P1.X = col1Left
+            P1.Y = Y1
+            P4.X = col2Left
+            P4.Y = Y2
+            
+            Dim lMin As Single
+            lMin = IIf(P1.X < P4.X, P1.X, P4.X) - 40 * nScale
+            P2.X = lMin
+            P2.Y = P1.Y
+            P3.X = lMin
+            P3.Y = P4.Y
+        End If
+    End If
+    
+    GdipCreatePen1 RGBA(fStartColor, fOpacity), fLineWidth * nScale, UnitPixel, hPen
+    GdipCreateLineBrush P1, P4, RGBA(fStartColor, fOpacity), RGBA(fEndColor, fOpacity), WrapModeTileFlipXY, hBrush
+    
+    GdipSetPenBrushFill hPen, hBrush
+    GdipSetPenDashStyle hPen, fLineStyle
+    GdipSetPenStartCap hPen, fStartCap
+    GdipSetPenEndCap hPen, fEndCap
+    
+    GdipDrawBezier hGraphics, hPen, P1.X, P1.Y, P2.X, P2.Y, P3.X, P3.Y, P4.X, P4.Y
+    
+    Call GdipDeleteBrush(hBrush)
+    Call GdipDeletePen(hPen)
 End Sub
 
 Private Function DrawBubble(ByVal hGraphics As Long, RCT As RECTL, BorderColor As Long, BorderWidth As Long, BackColor As Long, lCurve As Long, coWidth As Long, coLen As Long, COPos As CallOutPosition) As Long
@@ -895,90 +1060,80 @@ With RCT
 
     If BorderWidth >= 1 Then GdipCreatePen1 BorderColor, BorderWidth, UnitPixel, hPen
     GdipCreateSolidFill BackColor, hBrush
-    Call GdipCreatePath(&H0, mpath)
-                    
-    GdipAddPathArcI mpath, .Left, .Top, mRound * 2, mRound * 2, 180, 90
 
-    If COPos = coTop Then
-        Xx = .Left + (.Width - coWidth) / 2
-        If mRound = 0 Then GdipAddPathLineI mpath, .Left, .Top, .Left, .Top
-        GdipAddPathLineI mpath, Xx, .Top, Xx + coAngle, .Top - coLen
-        GdipAddPathLineI mpath, Xx + coAngle, .Top - coLen, Xx + coWidth, .Top
-    End If
+    GdipCreatePath &H0, mpath
 
-    GdipAddPathArcI mpath, .Left + .Width - mRound * 2, .Top, mRound * 2, mRound * 2, 270, 90
-
-    If COPos = coRight Then
-        Yy = .Top + (.Height - coWidth) / 2
-        Xx = .Left + .Width
-        If mRound = 0 Then GdipAddPathLineI mpath, .Left + .Width, .Top, .Left + .Width, .Top
-        GdipAddPathLineI mpath, Xx, Yy, Xx + coLen, Yy + coAngle
-        GdipAddPathLineI mpath, Xx + coLen, Yy + coAngle, Xx, Yy + coWidth
-    End If
-
-    GdipAddPathArcI mpath, .Left + .Width - mRound * 2, .Top + .Height - mRound * 2, mRound * 2, mRound * 2, 0, 90
-
-    If COPos = coBottom Then
-        Xx = .Left + (.Width - coWidth) / 2
-        Yy = .Top + .Height
-        If mRound = 0 Then GdipAddPathLineI mpath, .Left + .Width, .Top + .Height, .Left + .Width, .Top + .Height
-        GdipAddPathLineI mpath, Xx + coWidth, Yy, Xx + coAngle, Yy + coLen
-        GdipAddPathLineI mpath, Xx + coAngle, Yy + coLen, Xx, Yy
-    End If
-
-    GdipAddPathArcI mpath, .Left, .Top + .Height - mRound * 2, mRound * 2, mRound * 2, 90, 90
+    Select Case COPos
+        Case coLeft
+            Yy = .Top + (.Height / 2)
+            Xx = .Left
+            GdipAddPathLineI mpath, Xx, Yy - coAngle, Xx - coLen, Yy
+            GdipAddPathLineI mpath, Xx - coLen, Yy, Xx, Yy + coAngle
+        Case coTop
+            Yy = .Top
+            Xx = .Left + (.Width / 2)
+            GdipAddPathLineI mpath, Xx + coAngle, Yy, Xx, Yy - coLen
+            GdipAddPathLineI mpath, Xx, Yy - coLen, Xx - coAngle, Yy
+        Case coRight
+            Yy = .Top + (.Height / 2)
+            Xx = .Left + .Width
+            GdipAddPathLineI mpath, Xx, Yy + coAngle, Xx + coLen, Yy
+            GdipAddPathLineI mpath, Xx + coLen, Yy, Xx, Yy - coAngle
+        Case coBottom
+            Yy = .Top + .Height
+            Xx = .Left + (.Width / 2)
+            GdipAddPathLineI mpath, Xx - coAngle, Yy, Xx, Yy + coLen
+            GdipAddPathLineI mpath, Xx, Yy + coLen, Xx + coAngle, Yy
+    End Select
     
-    If COPos = coLeft Then
-        Yy = .Top + (.Height - coWidth) / 2
-        If mRound = 0 Then GdipAddPathLineI mpath, .Left, .Top + .Height, .Left, .Top + .Height
-        GdipAddPathLineI mpath, .Left, Yy + coWidth, .Left - coLen, Yy + coAngle
-        GdipAddPathLineI mpath, .Left - coLen, Yy + coAngle, .Left, Yy
-    End If
-End With
-        
+    'Corners
+    GdipAddPathArcI mpath, .Left, .Top, mRound, mRound, 180, 90
+    GdipAddPathArcI mpath, (.Left + .Width) - mRound, .Top, mRound, mRound, 270, 90
+    GdipAddPathArcI mpath, (.Left + .Width) - mRound, (.Top + .Height) - mRound, mRound, mRound, 0, 90
+    GdipAddPathArcI mpath, .Left, (.Top + .Height) - mRound, mRound, mRound, 90, 90
+
     GdipClosePathFigures mpath
+
     GdipFillPath hGraphics, hBrush, mpath
     If BorderWidth >= 1 Then GdipDrawPath hGraphics, hPen, mpath
-    
+
     Call GdipDeletePath(mpath)
     Call GdipDeleteBrush(hBrush)
-    Call GdipDeletePen(hPen)
+    If BorderWidth >= 1 Then Call GdipDeletePen(hPen)
 
+End With
 End Function
 
 Private Function DrawCaption(ByVal hGraphics As Long, sString As Variant, oFont As StdFont, layoutRect As RECTS, _
-                             TextColor As Long, mAngle As Single, HAlign As eTextAlignH, VAlign As eTextAlignV, _
-                             CapX As Long, CapY As Long, Icon As Boolean) As Long
-Dim hPath As Long
-Dim hBrush As Long
-Dim hFontFamily As Long
-Dim hFormat As Long
-Dim lFontSize As Long
-Dim lFontStyle As GDIPLUS_FONTSTYLE
-Dim newY As Long, newX As Long
+                             ByVal TextColor As Long, ByVal mAngle As Single, _
+                             ByVal H_Align As eTextAlignH, ByVal V_Align As eTextAlignV, _
+                             ByVal CapX As Long, ByVal CapY As Long, Optional Icon As Boolean) As Long
 
-On Error Resume Next
-
-    If GdipCreatePath(&H0, hPath) = 0 Then
-
-        If GdipCreateStringFormat(0, 0, hFormat) = 0 Then
-            GdipSetStringFormatTrimming hFormat, StringTrimmingEllipsisWord
-            GdipSetStringFormatAlign hFormat, HAlign
-            GdipSetStringFormatLineAlign hFormat, VAlign
-        End If
-
-        GetFontStyleAndSize oFont, lFontStyle, lFontSize
-
-        If GdipCreateFontFamilyFromName(StrPtr(oFont.Name), 0, hFontFamily) Then
-            If hFontCollection Then
-                If GdipCreateFontFamilyFromName(StrPtr(oFont.Name), hFontCollection, hFontFamily) Then
-                    If GdipGetGenericFontFamilySansSerif(hFontFamily) Then Exit Function
-                End If
-            Else
-                If GdipGetGenericFontFamilySansSerif(hFontFamily) Then Exit Function
-            End If
-        End If
-'------------------------------------------------------------------------
+    Dim hFormat      As Long
+    Dim hBrush       As Long
+    Dim hFontFamily  As Long
+    Dim lFontSize    As Long
+    Dim lFontStyle   As Long
+    Dim hPath        As Long
+    Dim newX         As Single
+    Dim newY         As Single
+    Dim Ret          As Long
+    
+    If Trim$(sString) <> vbNullString Then
+      
+      GdipCreatePath &H0, hPath
+      Call GetFontStyleAndSize(oFont, lFontStyle, lFontSize)
+      Call GdipCreateFontFamilyFromName(StrPtr(oFont.Name), 0, hFontFamily)
+      
+      If hFontFamily = 0 Then
+          GdipGetGenericFontFamilySansSerif hFontFamily
+      End If
+      
+      GdipCreateStringFormat 0, 0, hFormat
+      GdipSetStringFormatAlign hFormat, H_Align
+      GdipSetStringFormatLineAlign hFormat, V_Align
+      GdipSetStringFormatTrimming hFormat, StringTrimmingEllipsisCharacter
+      
         If mAngle <> 0 Then
             newY = (layoutRect.Height / 2)
             newX = (layoutRect.Width / 2)
@@ -986,16 +1141,16 @@ On Error Resume Next
             Call GdipRotateWorldTransform(hGraphics, mAngle, 0)
             Call GdipTranslateWorldTransform(hGraphics, -newX, -newY, 0)
         End If
-'------------------------------------------------------------------------
+        
          layoutRect.Left = layoutRect.Left + CapX
          layoutRect.Top = layoutRect.Top + CapY
-'------------------------------------------------------------------------
+         
       If Icon Then
         GdipAddPathString hPath, StrPtr(ChrW2(sString)), -1, hFontFamily, lFontStyle, lFontSize, layoutRect, hFormat
       Else
         GdipAddPathString hPath, StrPtr(sString), -1, hFontFamily, lFontStyle, lFontSize, layoutRect, hFormat
       End If
-'------------------------------------------------------------------------
+      
         GdipDeleteStringFormat hFormat
         GdipCreateSolidFill TextColor, hBrush
         GdipFillPath hGraphics, hBrush, hPath
@@ -1011,11 +1166,11 @@ Private Sub DrawLine(hGraphics As Long, X1 As Single, Y1 As Single, X2 As Single
                      fLineStyle As DashStyle, fLineWidth As Single, _
                      fStarCap As LineCap, fEndCap As LineCap, _
                      fStartColor As OLE_COLOR, fEndColor As OLE_COLOR, fOpacity As Long)
-Dim hPen As Long
-Dim hBrush As Long
-Dim lP1 As POINTS
-Dim lP2 As POINTS
-    
+  Dim hPen As Long
+  Dim hBrush As Long
+  Dim lP1 As POINTS
+  Dim lP2 As POINTS
+      
   lP1.X = X1: lP1.Y = Y1
   lP2.X = X2: lP2.Y = Y2
 
@@ -1031,7 +1186,6 @@ Dim lP2 As POINTS
   
   Call GdipDeleteBrush(hBrush)
   Call GdipDeletePen(hPen)
-    
 End Sub
 
 Private Sub DrawCurve(hGraphics As Long, X1 As Single, Y1 As Single, X2 As Single, Y2 As Single, _
@@ -1039,13 +1193,13 @@ Private Sub DrawCurve(hGraphics As Long, X1 As Single, Y1 As Single, X2 As Singl
                      fLineStyle As DashStyle, fLineWidth As Single, _
                      fStarCap As LineCap, fEndCap As LineCap, _
                      fStartColor As OLE_COLOR, fEndColor As OLE_COLOR, fOpacity As Long)
-Dim hPen As Long
-Dim hBrush As Long
-Dim lP1 As POINTS
-Dim lP2 As POINTS
-Dim lP3 As POINTS
-Dim lP4 As POINTS
-    
+  Dim hPen As Long
+  Dim hBrush As Long
+  Dim lP1 As POINTS
+  Dim lP2 As POINTS
+  Dim lP3 As POINTS
+  Dim lP4 As POINTS
+      
   lP1.X = X1: lP1.Y = Y1
   lP4.X = X2: lP4.Y = Y2
   
@@ -1078,7 +1232,6 @@ Dim lP4 As POINTS
   
   Call GdipDeleteBrush(hBrush)
   Call GdipDeletePen(hPen)
-    
 End Sub
 
 Private Function DrawRoundRect(ByVal hGraphics As Long, Rect As RECTL, ByVal BackColor As Long, _
@@ -1091,9 +1244,8 @@ Private Function DrawRoundRect(ByVal hGraphics As Long, Rect As RECTL, ByVal Bac
     
     If m_BorderWidth > 0 Then GdipCreatePen1 BorderColor, BorderWidth * nScale, &H2, hPen
     If Filled Then GdipCreateSolidFill BackColor, hBrush
-    'GdipCreateLineBrushFromRectWithAngleI Rect, BackColor, BackColor, 90, 0, WrapModeTileFlipXY, hBrush
     
-    GdipCreatePath &H0, mpath   '&H0
+    GdipCreatePath &H0, mpath
     
     With Rect
         mRound = GetSafeRound((Round * nScale), .Width * 2, .Height * 2)
@@ -1106,11 +1258,11 @@ Private Function DrawRoundRect(ByVal hGraphics As Long, Rect As RECTL, ByVal Bac
     
     GdipClosePathFigures mpath
     GdipFillPath hGraphics, hBrush, mpath
-    GdipDrawPath hGraphics, hPen, mpath
+    If m_BorderWidth > 0 Then GdipDrawPath hGraphics, hPen, mpath
     
     Call GdipDeletePath(mpath)
-    Call GdipDeleteBrush(hBrush)
-    Call GdipDeletePen(hPen)
+    If Filled Then Call GdipDeleteBrush(hBrush)
+    If m_BorderWidth > 0 Then Call GdipDeletePen(hPen)
 End Function
 
 Private Function GetFontStyleAndSize(oFont As StdFont, lFontStyle As Long, lFontSize As Long)
@@ -1137,28 +1289,42 @@ Private Function GetSafeRound(Angle As Integer, Width As Long, Height As Long) A
 End Function
 
 Private Function GetItem(lColumn As Long, ByVal Y As Single) As Long
-'On Error Resume Next
-    Y = (Y + ucScrollV.Value) - (m_Col(lColumn).StartY + m_ItemHeight)
-    GetItem = (Y \ m_ItemHeight)
-    If GetItem >= ItemCount(lColumn) Or GetItem < 0 Then GetItem = -1
+    Dim absY As Long
+    If lColumn < 0 Or lColumn >= ColCount Then
+        GetItem = -1
+        Exit Function
+    End If
+    
+    absY = (Y + ucScrollV.Value) - (m_Col(lColumn).StartY + m_ItemHeight)
+    If absY < 0 Then
+        GetItem = -1
+    Else
+        GetItem = (absY \ m_ItemHeight)
+        If GetItem >= ItemCount(lColumn) Then GetItem = -1
+    End If
 End Function
 
 Private Function GetColumn(ByVal X As Single, ByVal Y As Single) As Long
-Dim C As Long
-
-X = (X + ucScrollH.Value)
-For C = 0 To UBound(m_Col)
-  With m_Col(C)
-    If X >= (.StartX) And X <= (.StartX + .Width) And Y >= .StartY And Y <= .StartY + (ItemCount(C) * m_ItemHeight) Then
-      GetColumn = C
-      Debug.Print "GetColumn:" & C
-      Exit For
-    Else
-      GetColumn = -1
-    End If
-  End With
-Next C
-
+  Dim C As Long
+  Dim absX As Long, absY As Long
+  
+  absX = X + ucScrollH.Value
+  absY = Y + ucScrollV.Value
+  
+  GetColumn = -1
+  If ColCount <= 0 Then Exit Function
+  
+  For C = 0 To ColCount - 1
+    With m_Col(C)
+      If .Visible Then
+        If absX >= .StartX And absX <= (.StartX + .Width) And _
+           absY >= .StartY And absY <= (.StartY + (ItemCount(C) + 1) * m_ItemHeight) Then
+          GetColumn = C
+          Exit Function
+        End If
+      End If
+    End With
+  Next C
 End Function
 
 Private Function GetWindowsDPI() As Double
@@ -1194,46 +1360,31 @@ Private Sub InitGDI()
 End Sub
 
 Private Function LoadPictureFromFile(ByVal FileName As String) As Boolean
-Dim imgW As Long, imgH As Long
-Dim BmpW As Single, BmpH As Single
-Dim Bmp  As Long, Grph As Long
+  Dim imgW As Long, imgH As Long
+  Dim BmpW As Single, BmpH As Single
+  Dim Bmp  As Long, Grph As Long
 
-If m_Bmp Then
-    Call GdipDisposeImage(m_Bmp)
-    m_Bmp = 0
-End If
+  If m_Bmp Then
+      Call GdipDisposeImage(m_Bmp)
+      m_Bmp = 0
+  End If
+  
+  If Len(FileName) = 0 Then Exit Function
 
-imgW = IcoBoxL.Width
-imgH = IcoBoxL.Height
+  Call GdipLoadImageFromFile(StrPtr(FileName), Bmp)
+  If Bmp = 0 Then Exit Function
 
-Call GdipLoadImageFromFile(StrPtr(FileName), m_Bmp)
+  Call GdipGetImageDimension(Bmp, BmpW, BmpH)
+  imgW = CLng(BmpW)
+  imgH = CLng(BmpH)
 
-If m_Bmp <> 0 Then
-    GdipGetImageDimension m_Bmp, BmpW, BmpH
-    '-->
-    If GdipCreateBitmapFromScan0(imgW, imgH, 0&, &HE200B, ByVal 0&, Bmp) = 0 Then
-      If GdipGetImageGraphicsContext(Bmp, Grph) = 0 Then
+  Call GdipCreateBitmapFromScan0(imgW, imgH, 0, &H26200A, 0, m_Bmp)
+  Call GdipGetImageGraphicsContext(m_Bmp, Grph)
+  Call GdipDrawImageRectRectI(Grph, Bmp, 0, 0, imgW, imgH, 0, 0, imgW, imgH, &H2, 0, 0, 0)
+  Call GdipDisposeImage(Bmp)
+  Call GdipDeleteGraphics(Grph)
 
-          If imgW > BmpW Or imgH > BmpH Then
-              Call GdipSetInterpolationMode(Grph, 5&)  '// IterpolationModeNearestNeighbor
-          Else
-              Call GdipSetInterpolationMode(Grph, 7&)  '//InterpolationModeHighQualityBicubic
-              Call GdipSetPixelOffsetMode(Grph, 4&)
-          End If
-
-          Call GdipDrawImageRectRectI(Grph, m_Bmp, 0, 0, imgW, imgH, 0, 0, BmpW, BmpH, &H2)
-          GdipDeleteGraphics Grph
-
-          Call GdipDisposeImage(m_Bmp)
-          m_Bmp = Bmp
-          '...Draw Image on Control
-          'Draw 'Don´t Call the Function because is called inside it...
-          LoadPictureFromFile = True
-      End If
-    End If
-Else
-    LoadPictureFromFile = False
-End If
+  LoadPictureFromFile = True
 End Function
 
 Private Function ReadValue(ByVal lProp As Long, Optional Default As Long) As Long
@@ -1274,6 +1425,7 @@ Private Function SetRECS(lpRect As RECTS, ByVal X As Long, ByVal Y As Long, ByVa
 End Function
 
 Private Sub TerminateGDI()
+    DestroyBuffer
     Call GdiplusShutdown(GdipToken)
 End Sub
 
@@ -1310,7 +1462,7 @@ Private Sub UserControl_Initialize()
 End Sub
 
 Private Sub UserControl_InitProperties()
-hFontCollection = ReadValue(&HFC)
+  hFontCollection = ReadValue(&HFC)
   
   m_Enabled = True
   m_Clickable = False
@@ -1318,6 +1470,7 @@ hFontCollection = ReadValue(&HFC)
   m_Editable = False
   
   m_BorderColor = &HFF8080
+  m_BorderColorActive = vbRed
   m_BackColor = &H8000000F
   m_BoxColor = vbRed
   m_BorderWidth = 1
@@ -1332,373 +1485,349 @@ hFontCollection = ReadValue(&HFC)
   m_CaptionAlignH = 1
   m_SubTextAlignV = 1
   m_SubTextAlignH = 1
-  'm_IconAlignV = 1
-  'm_IconAlignH = 1
-  'm_ImageType = 0
-  'm_BadgeVisible = 1
-  m_SubTextVisible = 1
   m_ItemHeight = 60
   m_ColWidth = 150
   m_ColorActive = vbRed
   m_BadgeType = False
   m_CornerCurve = 5
   m_BoxOpacity = 90
- 
- 
 End Sub
 
 Private Sub UserControl_KeyDown(KeyCode As Integer, Shift As Integer)
-
-Select Case KeyCode
-  Case 37, 38
-      ucScrollV.Value = ucScrollV.Value - (m_ItemHeight / 2)
-      'If m_Clickable Then m_ActiveItem = IIf(m_ActiveItem = 0, 0, m_ActiveItem - 1)
-    
-  Case 39, 40
-      ucScrollV.Value = ucScrollV.Value + (m_ItemHeight / 2)
-      'If m_Clickable Then m_ActiveItem = IIf(m_ActiveItem = ItemCount(ActiveSide) - 1, ItemCount(ActiveSide) - 1, m_ActiveItem + 1)
-    
-End Select
-  
-RaiseEvent KeyDown(KeyCode, Shift)
-
+  Select Case KeyCode
+    Case 37, 38
+        ucScrollV.Value = IIf(ucScrollV.Value > (m_ItemHeight / 2), ucScrollV.Value - (m_ItemHeight / 2), 0)
+    Case 39, 40
+        ucScrollV.Value = IIf(ucScrollV.Value + (m_ItemHeight / 2) < ucScrollV.Max, ucScrollV.Value + (m_ItemHeight / 2), ucScrollV.Max)
+  End Select
+  RaiseEvent KeyDown(KeyCode, Shift)
 End Sub
 
 Private Sub UserControl_KeyPress(KeyAscii As Integer)
-RaiseEvent KeyPress(KeyAscii)
+  RaiseEvent KeyPress(KeyAscii)
 End Sub
 
 Private Sub UserControl_KeyUp(KeyCode As Integer, Shift As Integer)
-RaiseEvent KeyUp(KeyCode, Shift)
+  RaiseEvent KeyUp(KeyCode, Shift)
 End Sub
 
 Private Sub UserControl_DblClick()
-On Error Resume Next
+  On Error Resume Next
+  If m_Editable = True Then
+    m_ActiveCol = GetColumn(mX, mY)
+    m_ActiveItem(m_ActiveCol) = GetItem(m_ActiveCol, mY)
 
-If m_Editable = True Then
-
-  m_ActiveCol = GetColumn(mX, mY)
-  m_ActiveItem(m_ActiveCol) = GetItem(m_ActiveCol, mY)
-
-  If SideStart = -1 Then
-  
-    SideStart = m_ActiveCol
-    InitCurve = m_ActiveItem(m_ActiveCol)
-    Debug.Print "StartDraw : SideStart " & SideStart
-  
-  Else
-  
-    SideEnd = m_ActiveCol
-    
-    If SideStart = SideEnd Then
-    
-      Debug.Print "[DrawCurve] SideStart: " & SideStart & " ActiveSide: " & m_ActiveCol & " SideTo: " & IIf(m_ActiveCol > 0, "toLeft", "toRight")
-      EndCurve = m_ActiveItem(m_ActiveCol)
-      AddCurve SideStart, InitCurve, EndCurve, IIf(m_DefaultSide = Auto, IIf(m_ActiveCol > 0, toLeft, toRight), m_DefaultSide), 50, m_LineStyle, m_LineStartCap, m_LineEndCap, m_LineStartColor, m_LineEndColor, m_LineWidth, m_LineOpacity, True
-      SideStart = -1
-      
+    If SideStart = -1 Then
+      SideStart = m_ActiveCol
+      InitCurve = m_ActiveItem(m_ActiveCol)
     Else
-    
-      Debug.Print "DrawLine"
-      If m_ActiveItem(SideStart) > -1 And m_ActiveItem(m_ActiveCol) > -1 Then
-        AddLine SideStart, m_ActiveItem(SideStart), SideEnd, m_ActiveItem(m_ActiveCol), m_LineStyle, m_LineStartCap, m_LineEndCap, m_LineStartColor, m_LineEndColor, m_LineWidth, m_LineOpacity, True
+      SideEnd = m_ActiveCol
+      If SideStart = SideEnd Then
+        EndCurve = m_ActiveItem(m_ActiveCol)
+        AddCurve SideStart, InitCurve, EndCurve, IIf(m_DefaultSide = Auto, IIf(m_ActiveCol > 0, toLeft, toRight), m_DefaultSide), 50, m_LineStyle, m_LineStartCap, m_LineEndCap, m_LineStartColor, m_LineEndColor, m_LineWidth, m_LineOpacity, True
         SideStart = -1
+      Else
+        If m_ActiveItem(SideStart) > -1 And m_ActiveItem(m_ActiveCol) > -1 Then
+          AddLine SideStart, m_ActiveItem(SideStart), SideEnd, m_ActiveItem(m_ActiveCol), m_LineStyle, m_LineStartCap, m_LineEndCap, m_LineStartColor, m_LineEndColor, m_LineWidth, m_LineOpacity, True
+          SideStart = -1
+        End If
       End If
-  
     End If
-    
+  Else
+    m_ActiveItem(SideStart) = -1
+    m_ActiveItem(SideEnd) = -1
   End If
-  
-Else
 
-  m_ActiveItem(SideStart) = -1
-  m_ActiveItem(SideEnd) = -1
-
-End If
-
-Refresh
-
-RaiseEvent DblClick(m_ActiveCol, m_SelectItem(m_ActiveCol))
+  Refresh
+  RaiseEvent DblClick(m_ActiveCol, m_SelectItem(m_ActiveCol))
 End Sub
 
 Private Sub UserControl_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+  mY = Y
+  mX = X
+  mCol = GetColumn(X, Y)
 
-mY = Y
-mX = X
-mCol = GetColumn(X, Y)
+  If mCol > -1 Then
+    m_ActiveCol = mCol
+    m_SelectItem(mCol) = -1
+    m_ActiveItem(mCol) = -1
 
+    If m_ColsMoveable And Button = 1 Then
+      m_IsDragging = True
+      m_DragOffsetX = (X + ucScrollH.Value) - m_Col(mCol).StartX
+      m_DragOffsetY = (Y + ucScrollV.Value) - m_Col(mCol).StartY
+    End If
 
-If mCol > -1 Then
-  m_ActiveCol = mCol
-  m_SelectItem(mCol) = -1
-  m_ActiveItem(mCol) = -1
-
-  If m_Clickable Then
-    m_SelectItem(mCol) = GetItem(mCol, Y)
-    Debug.Print "m_SelectItem(" & mCol & ")=" & m_SelectItem(mCol)
-
+    If m_Clickable Then
+      m_SelectItem(mCol) = GetItem(mCol, Y)
+      RaiseEvent MouseDown(Button, Shift, X, Y)
+      With m_Col(mCol)
+        If m_SelectItem(mCol) <> -1 Then RaiseEvent Click(mCol, GetItem(mCol, Y), .Cell(GetItem(mCol, Y)).ColumnTo, .Cell(GetItem(mCol, Y)).LineTo, .Cell(GetItem(mCol, Y)).CurveTo)
+      End With
+      Refresh
+    Else
+      RaiseEvent MouseDown(Button, Shift, X, Y)
+    End If
+  Else
+    m_IsDragging = False
     RaiseEvent MouseDown(Button, Shift, X, Y)
-    With m_Col(mCol)
-      If m_SelectItem(mCol) <> -1 Then RaiseEvent Click(mCol, GetItem(mCol, Y), .Cell(GetItem(mCol, Y)).ColumnTo, .Cell(GetItem(mCol, Y)).LineTo, .Cell(GetItem(mCol, Y)).CurveTo)
-    End With
-    Refresh
   End If
-End If
-
 End Sub
 
 Private Sub UserControl_MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
-If m_Editable Then
-  MousePointerHands True
-Else
-  MousePointerHands False
-End If
+  If m_Editable Then
+    MousePointerHands True
+  Else
+    MousePointerHands False
+  End If
 
-If m_ColsMoveable Then
-  On Error Resume Next
-  m_Col(mCol).StartX = X - (m_Col(mCol).Width / 2)
-  m_Col(mCol).StartY = Y - (m_Col(mCol).Cell(0).Height / 2)
-  Refresh
-End If
+  If m_ColsMoveable And m_IsDragging And mCol > -1 And Button = 1 Then
+    Dim newX As Long, newY As Long
+    newX = (X + ucScrollH.Value) - m_DragOffsetX
+    newY = (Y + ucScrollV.Value) - m_DragOffsetY
+    If newX < 0 Then newX = 0
+    If newY < 0 Then newY = 0
+    m_Col(mCol).StartX = newX
+    m_Col(mCol).StartY = newY
+    Refresh
+  End If
 
-RaiseEvent MouseMove(Button, Shift, X, Y)
+  RaiseEvent MouseMove(Button, Shift, X, Y)
 End Sub
 
 Private Sub UserControl_MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
-If m_ColsMoveable Then mCol = -1
-RaiseEvent MouseUp(Button, Shift, X, Y)
+  m_IsDragging = False
+  If m_ColsMoveable Then mCol = -1
+  RaiseEvent MouseUp(Button, Shift, X, Y)
 End Sub
 
 Private Sub UserControl_ReadProperties(PropBag As PropertyBag)
-With PropBag
-  m_Enabled = .ReadProperty("Enabled", True)
-  m_Clickable = .ReadProperty("Clickable", False)
-  m_Editable = .ReadProperty("Editable", False)
-  
-  m_BorderColor = .ReadProperty("BorderColor", &HFF8080)
-  m_BorderColorActive = .ReadProperty("BorderColorActive", vbRed)
-  m_BackColor = .ReadProperty("BackColor", &H8000000F)
-  m_BoxColor = .ReadProperty("BoxColor", vbRed)
-  m_BorderWidth = .ReadProperty("BorderWidth", 1)
-  m_ForeColor1 = .ReadProperty("TextColor", &HFFFFFF)
-  m_ForeColor2 = .ReadProperty("SubTextColor", &HFFFFFF)
-  m_HeaderBackColor = .ReadProperty("HeaderBackColor", vbBlack)
-  m_HeaderForeColor = .ReadProperty("HeaderForeColor", vbWhite)
-  Set m_Font1 = .ReadProperty("TextFont", UserControl.Font)
-  Set m_Font2 = .ReadProperty("SubTextFont", UserControl.Font)
-  Set m_LabelFont = .ReadProperty("LabelFont", UserControl.Font)
-  Set m_HeaderFont = .ReadProperty("HeaderFont", UserControl.Font)
-  m_FontOpacity = .ReadProperty("FontOpacity", 100)
-  m_CaptionAlignV = .ReadProperty("TextAlignV", 1)
-  m_CaptionAlignH = .ReadProperty("TextAlignH", 1)
-  m_SubTextAlignV = .ReadProperty("SubTextAlignV", 1)
-  m_SubTextAlignH = .ReadProperty("SubTextAlignH", 1)
-  m_IconForeColor = .ReadProperty("IconForeColor", &HFFFFFF)
-  Set m_IconFont = .ReadProperty("IconFont", UserControl.Font)
-  'm_IconAlignV = .ReadProperty("IconAlignV", 1)
-  'm_IconAlignH = .ReadProperty("IconAlignH", 1)
-  m_ImageType = .ReadProperty("ImageType", 0)
-  m_BadgeVisible = .ReadProperty("BadgeVisible", 1) 'BadgeVisible
-  m_SubTextVisible = .ReadProperty("SubTextVisible", 1)
-  m_ItemHeight = .ReadProperty("ItemHeight", 60)
-  m_ColWidth = .ReadProperty("ColWidth", 150)
-  m_ColsMoveable = .ReadProperty("ColsMoveable", False)
-  m_ColorActive = .ReadProperty("BackColorActive", vbRed)
-  m_BadgeType = .ReadProperty("BadgeType", 0)
-  m_CornerCurve = .ReadProperty("CornerCurve", 5)
-  m_BoxOpacity = .ReadProperty("BoxOpacity", 90)
-  m_DefaultSide = .ReadProperty("LineSideDefault", 1)
-  m_LineWidth = .ReadProperty("LineWidth", 5)
-  m_LineStyle = .ReadProperty("LineStyle", 0)
-  m_LineOpacity = .ReadProperty("LineOpacity", 100)
-  m_LineStartCap = .ReadProperty("LineStartCap", 0)
-  m_LineEndCap = .ReadProperty("LineEndCap", 0)
-  m_LineStartColor = .ReadProperty("LineStartColor", &HFF&)
-  m_LineEndColor = .ReadProperty("LineEndColor", &HC67300)
-  
-End With
-
+  With PropBag
+    m_Enabled = .ReadProperty("Enabled", True)
+    m_Clickable = .ReadProperty("Clickable", False)
+    m_Editable = .ReadProperty("Editable", False)
+    
+    m_BorderColor = .ReadProperty("BorderColor", &HFF8080)
+    m_BorderColorActive = .ReadProperty("BorderColorActive", vbRed)
+    m_BackColor = .ReadProperty("BackColor", &H8000000F)
+    m_BoxColor = .ReadProperty("BoxColor", vbRed)
+    m_BorderWidth = .ReadProperty("BorderWidth", 1)
+    m_ForeColor1 = .ReadProperty("TextColor", &HFFFFFF)
+    m_ForeColor2 = .ReadProperty("SubTextColor", &HFFFFFF)
+    m_HeaderBackColor = .ReadProperty("HeaderBackColor", vbBlack)
+    m_HeaderForeColor = .ReadProperty("HeaderForeColor", vbWhite)
+    Set m_Font1 = .ReadProperty("TextFont", UserControl.Font)
+    Set m_Font2 = .ReadProperty("SubTextFont", UserControl.Font)
+    Set m_LabelFont = .ReadProperty("LabelFont", UserControl.Font)
+    Set m_HeaderFont = .ReadProperty("HeaderFont", UserControl.Font)
+    m_FontOpacity = .ReadProperty("FontOpacity", 100)
+    m_CaptionAlignV = .ReadProperty("TextAlignV", 1)
+    m_CaptionAlignH = .ReadProperty("TextAlignH", 1)
+    m_SubTextAlignV = .ReadProperty("SubTextAlignV", 1)
+    m_SubTextAlignH = .ReadProperty("SubTextAlignH", 1)
+    m_IconForeColor = .ReadProperty("IconForeColor", &HFFFFFF)
+    Set m_IconFont = .ReadProperty("IconFont", UserControl.Font)
+    m_ImageType = .ReadProperty("ImageType", 0)
+    m_BadgeVisible = .ReadProperty("BadgeVisible", 1)
+    m_SubTextVisible = .ReadProperty("SubTextVisible", 1)
+    m_ItemHeight = .ReadProperty("ItemHeight", 60)
+    m_ColWidth = .ReadProperty("ColWidth", 150)
+    m_ColsMoveable = .ReadProperty("ColsMoveable", False)
+    m_ColorActive = .ReadProperty("BackColorActive", vbRed)
+    m_BadgeType = .ReadProperty("BadgeType", 0)
+    m_CornerCurve = .ReadProperty("CornerCurve", 5)
+    m_BoxOpacity = .ReadProperty("BoxOpacity", 90)
+    m_DefaultSide = .ReadProperty("LineSideDefault", 1)
+    m_LineWidth = .ReadProperty("LineWidth", 5)
+    m_LineStyle = .ReadProperty("LineStyle", 0)
+    m_LineOpacity = .ReadProperty("LineOpacity", 100)
+    m_LineStartCap = .ReadProperty("LineStartCap", 0)
+    m_LineEndCap = .ReadProperty("LineEndCap", 0)
+    m_LineStartColor = .ReadProperty("LineStartColor", &HFF&)
+    m_LineEndColor = .ReadProperty("LineEndColor", &HC67300)
+  End With
 End Sub
 
 Private Sub UserControl_Resize()
     ucScrollV.Move UserControl.ScaleWidth - 11, 0, 11, UserControl.ScaleHeight - 11
     ucScrollH.Move 0, UserControl.ScaleHeight - 11, UserControl.ScaleWidth - 11, 11
+    UpdateScrollBars
     If ColCount > 0 Then Refresh
 End Sub
 
 Private Sub UserControl_Show()
-If ColCount > 0 Then Refresh
+  If ColCount > 0 Then Refresh
 End Sub
 
 Private Sub UserControl_Terminate()
-TerminateGDI
+  DestroyBuffer
+  TerminateGDI
 End Sub
 
 Private Sub UserControl_WriteProperties(PropBag As PropertyBag)
-With PropBag
-  Call .WriteProperty("Enabled", m_Enabled)
-  Call .WriteProperty("Clickable", m_Clickable)
-  Call .WriteProperty("Editable", m_Editable)
-  
-  Call .WriteProperty("BorderColor", m_BorderColor)
-  Call .WriteProperty("BorderColorActive", m_BorderColorActive)
-  Call .WriteProperty("BackColor", m_BackColor)
-  Call .WriteProperty("BorderWidth", m_BorderWidth)
-  Call .WriteProperty("BoxColor", m_BoxColor)
-  Call .WriteProperty("TextColor", m_ForeColor1)
-  Call .WriteProperty("SubTextColor", m_ForeColor2)
-  Call .WriteProperty("HeaderBackColor", m_HeaderBackColor)
-  Call .WriteProperty("HeaderForeColor", m_HeaderForeColor)
-  Call .WriteProperty("TextFont", m_Font1)
-  Call .WriteProperty("SubTextFont", m_Font2)
-  Call .WriteProperty("LabelFont", m_LabelFont)
-  Call .WriteProperty("HeaderFont", m_HeaderFont)
-  Call .WriteProperty("FontOpacity", m_FontOpacity)
-  Call .WriteProperty("TextAlignV", m_CaptionAlignV)
-  Call .WriteProperty("TextAlignH", m_CaptionAlignH)
-  Call .WriteProperty("SubTextAlignV", m_SubTextAlignV)
-  Call .WriteProperty("SubTextAlignH", m_SubTextAlignH)
-  Call .WriteProperty("IconForeColor", m_IconForeColor)
-  Call .WriteProperty("IconFont", m_IconFont)
-  'Call .WriteProperty("IconAlignV", m_IconAlignV)
-  'Call .WriteProperty("IconAlignH", m_IconAlignH)
-  Call .WriteProperty("ImageType", m_ImageType)
-  Call .WriteProperty("BadgeVisible", m_BadgeVisible)  'BadgeVisible
-  Call .WriteProperty("SubTextVisible", m_SubTextVisible)
-  Call .WriteProperty("ItemHeight", m_ItemHeight)
-  Call .WriteProperty("ColWidth", m_ColWidth)
-  Call .WriteProperty("ColsMoveable", m_ColsMoveable)
-  Call .WriteProperty("BackColorActive", m_ColorActive)
-  Call .WriteProperty("BadgeType", m_BadgeType)
-  Call .WriteProperty("CornerCurve", m_CornerCurve)
-  Call .WriteProperty("BoxOpacity", m_BoxOpacity)
-  Call .WriteProperty("LineSideDefault", m_DefaultSide)
-  Call .WriteProperty("LineWidth", m_LineWidth)
-  Call .WriteProperty("LineStyle", m_LineStyle)
-  Call .WriteProperty("LineOpacity", m_LineOpacity)
-  Call .WriteProperty("LineStartCap", m_LineStartCap)
-  Call .WriteProperty("LineEndCap", m_LineEndCap)
-  Call .WriteProperty("LineStartColor", m_LineStartColor)
-  Call .WriteProperty("LineEndColor", m_LineEndColor)
-End With
-  
+  With PropBag
+    Call .WriteProperty("Enabled", m_Enabled)
+    Call .WriteProperty("Clickable", m_Clickable)
+    Call .WriteProperty("Editable", m_Editable)
+    Call .WriteProperty("BorderColor", m_BorderColor)
+    Call .WriteProperty("BorderColorActive", m_BorderColorActive)
+    Call .WriteProperty("BackColor", m_BackColor)
+    Call .WriteProperty("BorderWidth", m_BorderWidth)
+    Call .WriteProperty("BoxColor", m_BoxColor)
+    Call .WriteProperty("TextColor", m_ForeColor1)
+    Call .WriteProperty("SubTextColor", m_ForeColor2)
+    Call .WriteProperty("HeaderBackColor", m_HeaderBackColor)
+    Call .WriteProperty("HeaderForeColor", m_HeaderForeColor)
+    Call .WriteProperty("TextFont", m_Font1)
+    Call .WriteProperty("SubTextFont", m_Font2)
+    Call .WriteProperty("LabelFont", m_LabelFont)
+    Call .WriteProperty("HeaderFont", m_HeaderFont)
+    Call .WriteProperty("FontOpacity", m_FontOpacity)
+    Call .WriteProperty("TextAlignV", m_CaptionAlignV)
+    Call .WriteProperty("TextAlignH", m_CaptionAlignH)
+    Call .WriteProperty("SubTextAlignV", m_SubTextAlignV)
+    Call .WriteProperty("SubTextAlignH", m_SubTextAlignH)
+    Call .WriteProperty("IconForeColor", m_IconForeColor)
+    Call .WriteProperty("IconFont", m_IconFont)
+    Call .WriteProperty("ImageType", m_ImageType)
+    Call .WriteProperty("BadgeVisible", m_BadgeVisible)
+    Call .WriteProperty("SubTextVisible", m_SubTextVisible)
+    Call .WriteProperty("ItemHeight", m_ItemHeight)
+    Call .WriteProperty("ColWidth", m_ColWidth)
+    Call .WriteProperty("ColsMoveable", m_ColsMoveable)
+    Call .WriteProperty("BackColorActive", m_ColorActive)
+    Call .WriteProperty("BadgeType", m_BadgeType)
+    Call .WriteProperty("CornerCurve", m_CornerCurve)
+    Call .WriteProperty("BoxOpacity", m_BoxOpacity)
+    Call .WriteProperty("LineSideDefault", m_DefaultSide)
+    Call .WriteProperty("LineWidth", m_LineWidth)
+    Call .WriteProperty("LineStyle", m_LineStyle)
+    Call .WriteProperty("LineOpacity", m_LineOpacity)
+    Call .WriteProperty("LineStartCap", m_LineStartCap)
+    Call .WriteProperty("LineEndCap", m_LineEndCap)
+    Call .WriteProperty("LineStartColor", m_LineStartColor)
+    Call .WriteProperty("LineEndColor", m_LineEndColor)
+  End With
 End Sub
 
 Public Property Get BackColor() As OLE_COLOR
-  BackColor = m_BackColor
+    BackColor = m_BackColor
 End Property
 
 Public Property Let BackColor(ByVal New_Color As OLE_COLOR)
-  m_BackColor = New_Color
-  PropertyChanged "BackColor"
-  Refresh
+    m_BackColor = New_Color
+    PropertyChanged "BackColor"
+    Refresh
 End Property
 
 Public Property Get BackColorActive() As OLE_COLOR
-  BackColorActive = m_ColorActive
+    BackColorActive = m_ColorActive
 End Property
 
 Public Property Let BackColorActive(ByVal NewColorActive As OLE_COLOR)
-  m_ColorActive = NewColorActive
-  PropertyChanged "BackColorActive"
-  Refresh
+    m_ColorActive = NewColorActive
+    PropertyChanged "BackColorActive"
+    Refresh
 End Property
 
 Public Property Get BorderColor() As OLE_COLOR
-  BorderColor = m_BorderColor
+    BorderColor = m_BorderColor
 End Property
 
 Public Property Let BorderColor(ByVal NewBorderColor As OLE_COLOR)
-  m_BorderColor = NewBorderColor
-  PropertyChanged "BorderColor"
-  Refresh
+    m_BorderColor = NewBorderColor
+    PropertyChanged "BorderColor"
+    Refresh
 End Property
 
 Public Property Get BorderColorActive() As OLE_COLOR
-  BorderColorActive = m_BorderColorActive
+    BorderColorActive = m_BorderColorActive
 End Property
 
 Public Property Let BorderColorActive(ByVal NewColorActive As OLE_COLOR)
-  m_BorderColorActive = NewColorActive
-  PropertyChanged "BorderColorActive"
-  Refresh
+    m_BorderColorActive = NewColorActive
+    PropertyChanged "BorderColorActive"
+    Refresh
 End Property
 
 Public Property Get BorderWidth() As Long
-  BorderWidth = m_BorderWidth
+    BorderWidth = m_BorderWidth
 End Property
 
 Public Property Let BorderWidth(ByVal NewBorderWidth As Long)
-  m_BorderWidth = NewBorderWidth
-  PropertyChanged "BorderWidth"
-  Refresh
+    m_BorderWidth = NewBorderWidth
+    PropertyChanged "BorderWidth"
+    Refresh
 End Property
 
 Public Property Get BoxColor() As OLE_COLOR
-  BoxColor = m_BoxColor
+    BoxColor = m_BoxColor
 End Property
 
 Public Property Let BoxColor(ByVal New_Color As OLE_COLOR)
-  m_BoxColor = New_Color
-  PropertyChanged "BoxColor"
-  Refresh
+    m_BoxColor = New_Color
+    PropertyChanged "BoxColor"
+    Refresh
 End Property
 
 Public Property Get BoxOpacity() As Long
-BoxOpacity = m_BoxOpacity
+    BoxOpacity = m_BoxOpacity
 End Property
 
 Public Property Let BoxOpacity(ByVal newBoxOpacity As Long)
-m_BoxOpacity = newBoxOpacity
-PropertyChanged "BoxOpacity"
-Refresh
+    m_BoxOpacity = newBoxOpacity
+    PropertyChanged "BoxOpacity"
+    Refresh
 End Property
 
 Public Property Get Clickable() As Boolean
-  Clickable = m_Clickable
+    Clickable = m_Clickable
 End Property
 
 Public Property Let Clickable(ByVal NewClickable As Boolean)
-  m_Clickable = NewClickable
-  PropertyChanged "Clickable"
+    m_Clickable = NewClickable
+    PropertyChanged "Clickable"
+    Refresh
 End Property
 
 Public Property Get ColWidth() As Long
-  ColWidth = m_ColWidth
+    ColWidth = m_ColWidth
 End Property
 
 Public Property Let ColWidth(ByVal NewColWidth As Long)
-  m_ColWidth = NewColWidth
-  PropertyChanged "ColWidth"
-  Refresh
+    m_ColWidth = NewColWidth
+    PropertyChanged "ColWidth"
+    Refresh
 End Property
 
 Public Property Get CornerCurve() As Long
-  CornerCurve = m_CornerCurve
+    CornerCurve = m_CornerCurve
 End Property
 
 Public Property Let CornerCurve(ByVal NewCornerCurve As Long)
-  m_CornerCurve = NewCornerCurve
-  PropertyChanged "CornerCurve"
-  Refresh
+    m_CornerCurve = NewCornerCurve
+    PropertyChanged "CornerCurve"
+    Refresh
 End Property
 
 Public Property Get Editable() As Boolean
-  Editable = m_Editable
+    Editable = m_Editable
 End Property
 
 Public Property Let Editable(ByVal NEditable As Boolean)
-  m_Editable = NEditable
-  PropertyChanged "Editable"
+    m_Editable = NEditable
+    PropertyChanged "Editable"
+    Refresh
 End Property
 
 Public Property Get Enabled() As Boolean
-  Enabled = m_Enabled
+    Enabled = m_Enabled
 End Property
 
 Public Property Let Enabled(ByVal New_Enabled As Boolean)
-  m_Enabled = New_Enabled
-  PropertyChanged "Enabled"
+    m_Enabled = New_Enabled
+    PropertyChanged "Enabled"
+    Refresh
 End Property
 
 Public Property Get hdc() As Long
@@ -1706,77 +1835,55 @@ Public Property Get hdc() As Long
 End Property
 
 Public Property Get HeaderBackColor() As OLE_COLOR
-  HeaderBackColor = m_HeaderBackColor
+    HeaderBackColor = m_HeaderBackColor
 End Property
 
 Public Property Let HeaderBackColor(ByVal NewHeaderBackColor As OLE_COLOR)
-  m_HeaderBackColor = NewHeaderBackColor
-  PropertyChanged "HeaderBackColor"
-  Refresh
+    m_HeaderBackColor = NewHeaderBackColor
+    PropertyChanged "HeaderBackColor"
+    Refresh
 End Property
 
 Public Property Get HeaderFont() As StdFont
-  Set HeaderFont = m_HeaderFont
+    Set HeaderFont = m_HeaderFont
 End Property
 
 Public Property Set HeaderFont(ByVal NewHeaderFont As StdFont)
-  Set m_HeaderFont = NewHeaderFont
-  PropertyChanged "HeaderFont"
-  Refresh
+    Set m_HeaderFont = NewHeaderFont
+    PropertyChanged "HeaderFont"
+    Refresh
 End Property
 
 Public Property Get HeaderForeColor() As OLE_COLOR
-  HeaderForeColor = m_HeaderForeColor
+    HeaderForeColor = m_HeaderForeColor
 End Property
 
 Public Property Let HeaderForeColor(ByVal NewHeaderForeColor As OLE_COLOR)
-  m_HeaderForeColor = NewHeaderForeColor
-  PropertyChanged "HeaderForeColor"
-  Refresh
+    m_HeaderForeColor = NewHeaderForeColor
+    PropertyChanged "HeaderForeColor"
+    Refresh
 End Property
 
 Public Property Let Header(ByVal lColumn As Long, ByVal sHeader As String)
-On Error Resume Next
-
-With m_Col(lColumn)
-  .Header = sHeader
-End With
-
-Refresh
+  On Error Resume Next
+  With m_Col(lColumn)
+    .Header = sHeader
+  End With
+  Refresh
 End Property
 
 Public Property Get hwnd() As Long
     hwnd = UserControl.hwnd
 End Property
 
-'Public Property Get IconAlignH() As eTextAlignH
-'  IconAlignH = m_IconAlignH
-'End Property
-'
-'Public Property Let IconAlignH(ByVal NewIconAlignH As eTextAlignH)
-'  m_IconAlignH = NewIconAlignH
-'  PropertyChanged "IconAlignH"
-'  Refresh
-'End Property
-'
-'Public Property Get IconAlignV() As eTextAlignV
-'  IconAlignV = m_IconAlignV
-'End Property
-'
-'Public Property Let IconAlignV(ByVal NewIconAlignV As eTextAlignV)
-'  m_IconAlignV = NewIconAlignV
-'  PropertyChanged "IconAlignV"
-'  Refresh
-'End Property
-
 Public Property Get IconFont() As StdFont
     Set IconFont = m_IconFont
 End Property
 
 Public Property Set IconFont(New_Font As StdFont)
-  Set m_IconFont = New_Font
+    Set m_IconFont = New_Font
     PropertyChanged "IconFont"
-  Refresh
+    Refresh
 End Property
 
 Public Property Get IconForeColor() As OLE_COLOR
@@ -1790,23 +1897,23 @@ Public Property Let IconForeColor(ByVal New_ForeColor As OLE_COLOR)
 End Property
 
 Public Property Get BadgeVisible() As eVisibleType
-BadgeVisible = m_BadgeVisible
+    BadgeVisible = m_BadgeVisible
 End Property
 
 Public Property Let BadgeVisible(ByVal newVisible As eVisibleType)
-m_BadgeVisible = newVisible
-PropertyChanged "BadgeVisible"
-Refresh
+    m_BadgeVisible = newVisible
+    PropertyChanged "BadgeVisible"
+    Refresh
 End Property
 
 Public Property Get ImageType() As eImageType
-  ImageType = m_ImageType
+    ImageType = m_ImageType
 End Property
 
 Public Property Let ImageType(ByVal NewImageType As eImageType)
-  m_ImageType = NewImageType
-  PropertyChanged "ImageType"
-  Refresh
+    m_ImageType = NewImageType
+    PropertyChanged "ImageType"
+    Refresh
 End Property
 
 Property Get ColCount() As Long
@@ -1814,7 +1921,7 @@ On Error GoTo ErrC
     ColCount = UBound(m_Col) + 1
     Exit Property
 ErrC:
-ColCount = 0
+    ColCount = 0
 End Property
 
 Property Get ItemCount(lColumn As Long) As Long
@@ -1823,300 +1930,264 @@ On Error Resume Next
 End Property
 
 Public Property Get ItemHeight() As Long
-  ItemHeight = m_ItemHeight
+    ItemHeight = m_ItemHeight
 End Property
 
 Public Property Let ItemHeight(ByVal NewSectionSpace As Long)
-  m_ItemHeight = NewSectionSpace
-  PropertyChanged "ItemHeight"
-  Refresh
+    m_ItemHeight = NewSectionSpace
+    PropertyChanged "ItemHeight"
+    Refresh
 End Property
 
 Public Property Get LabelFont() As StdFont
-  Set LabelFont = m_LabelFont
+    Set LabelFont = m_LabelFont
 End Property
 
 Public Property Set LabelFont(ByVal New_Font As StdFont)
-  Set m_LabelFont = New_Font
-  PropertyChanged "LabelFont"
-  Refresh
+    Set m_LabelFont = New_Font
+    PropertyChanged "LabelFont"
+    Refresh
 End Property
 
 Public Property Get BadgeType() As eTypeBadge
-  BadgeType = m_BadgeType
+    BadgeType = m_BadgeType
 End Property
 
 Public Property Let BadgeType(ByVal NewBadgeType As eTypeBadge)
-  m_BadgeType = NewBadgeType
-  PropertyChanged "BadgeType"
-  Refresh
+    m_BadgeType = NewBadgeType
+    PropertyChanged "BadgeType"
+    Refresh
 End Property
 
 Property Get LinesCount() As Long
-On Local Error Resume Next
-    LinesCount = UBound(mLine) + 1
+    LinesCount = 0
 End Property
 
 Property Get MaxItemCount() As Long
-Dim Count As Long, CountF As Long, C As Long
-
-CountF = 0
-On Error Resume Next
-
-For C = 0 To UBound(m_Col)
-  Count = ItemCount(C)
-  If Count > CountF Then CountF = Count
-Next C
-
-MaxItemCount = CountF
-
+    Dim Count As Long, CountF As Long, C As Long
+    CountF = 0
+    On Error Resume Next
+    For C = 0 To UBound(m_Col)
+        Count = ItemCount(C)
+        If Count > CountF Then CountF = Count
+    Next C
+    MaxItemCount = CountF
 End Property
 
 Public Property Get Redraw() As Boolean
-  Redraw = mRedraw
+    Redraw = mRedraw
 End Property
 
 Public Property Let Redraw(ByVal bRedraw As Boolean)
-  mRedraw = bRedraw
-  If mRedraw Then Refresh
+    mRedraw = bRedraw
+    If mRedraw Then Refresh
 End Property
 
 Public Property Get RunMode() As Boolean
-'Detect usermode even if its used inside another UC
-On Error Resume Next
+    On Error Resume Next
     RunMode = True
     RunMode = Ambient.UserMode
     RunMode = Extender.Parent.RunMode
 End Property
 
 Public Property Get SubTextAlignH() As eTextAlignH
-  SubTextAlignH = m_SubTextAlignH
+    SubTextAlignH = m_SubTextAlignH
 End Property
 
 Public Property Let SubTextAlignH(ByVal NewCaptionAlignH As eTextAlignH)
-  m_SubTextAlignH = NewCaptionAlignH
-  PropertyChanged "SubTextAlignH"
-  Refresh
+    m_SubTextAlignH = NewCaptionAlignH
+    PropertyChanged "SubTextAlignH"
+    Refresh
 End Property
 
 Public Property Get SubTextAlignV() As eTextAlignV
-  SubTextAlignV = m_SubTextAlignV
+    SubTextAlignV = m_SubTextAlignV
 End Property
 
 Public Property Let SubTextAlignV(ByVal NewCaptionAlignV As eTextAlignV)
-  m_SubTextAlignV = NewCaptionAlignV
-  PropertyChanged "SubTextAlignV"
-  Refresh
+    m_SubTextAlignV = NewCaptionAlignV
+    PropertyChanged "SubTextAlignV"
+    Refresh
 End Property
 
 Public Property Get SubTextColor() As OLE_COLOR
-  SubTextColor = m_ForeColor2
+    SubTextColor = m_ForeColor2
 End Property
 
 Public Property Let SubTextColor(ByVal NewForeColor As OLE_COLOR)
-  m_ForeColor2 = NewForeColor
-  PropertyChanged "SubTextColor"
-  Refresh
+    m_ForeColor2 = NewForeColor
+    PropertyChanged "SubTextColor"
+    Refresh
 End Property
 
 Public Property Get SubTextFont() As StdFont
-  Set SubTextFont = m_Font2
+    Set SubTextFont = m_Font2
 End Property
 
 Public Property Set SubTextFont(ByVal New_Font As StdFont)
-  Set m_Font2 = New_Font
-  PropertyChanged "SubTextFont"
-  Refresh
+    Set m_Font2 = New_Font
+    PropertyChanged "SubTextFont"
+    Refresh
 End Property
 
 Public Property Get SubTextVisible() As eVisibleType
-SubTextVisible = m_SubTextVisible
+    SubTextVisible = m_SubTextVisible
 End Property
 
 Public Property Let SubTextVisible(ByVal newVisible As eVisibleType)
-m_SubTextVisible = newVisible
-PropertyChanged "SubTextVisible"
-Refresh
+    m_SubTextVisible = newVisible
+    PropertyChanged "SubTextVisible"
+    Refresh
 End Property
 
 Public Property Get TextAlignH() As eTextAlignH
-  TextAlignH = m_CaptionAlignH
+    TextAlignH = m_CaptionAlignH
 End Property
 
 Public Property Let TextAlignH(ByVal NewCaptionAlignH As eTextAlignH)
-  m_CaptionAlignH = NewCaptionAlignH
-  PropertyChanged "TextAlignH"
-  Refresh
+    m_CaptionAlignH = NewCaptionAlignH
+    PropertyChanged "TextAlignH"
+    Refresh
 End Property
 
 Public Property Get TextAlignV() As eTextAlignV
-  TextAlignV = m_CaptionAlignV
+    TextAlignV = m_CaptionAlignV
 End Property
 
 Public Property Let TextAlignV(ByVal NewCaptionAlignV As eTextAlignV)
-  m_CaptionAlignV = NewCaptionAlignV
-  PropertyChanged "TextAlignV"
-  Refresh
+    m_CaptionAlignV = NewCaptionAlignV
+    PropertyChanged "TextAlignV"
+    Refresh
 End Property
 
 Public Property Get TextColor() As OLE_COLOR
-  TextColor = m_ForeColor1
+    TextColor = m_ForeColor1
 End Property
 
 Public Property Let TextColor(ByVal NewForeColor As OLE_COLOR)
-  m_ForeColor1 = NewForeColor
-  PropertyChanged "TextColor"
-  Refresh
+    m_ForeColor1 = NewForeColor
+    PropertyChanged "TextColor"
+    Refresh
 End Property
 
 Public Property Get TextFont() As StdFont
-  Set TextFont = m_Font1
+    Set TextFont = m_Font1
 End Property
 
 Public Property Set TextFont(ByVal New_Font As StdFont)
-  Set m_Font1 = New_Font
-  PropertyChanged "TextFont"
-  Refresh
+    Set m_Font1 = New_Font
+    PropertyChanged "TextFont"
+    Refresh
 End Property
 
 Public Property Get Version() As String
-Version = sVersion
+    Version = sVersion
 End Property
 
 Public Property Get Visible() As Boolean
-  Visible = Extender.Visible
+    Visible = Extender.Visible
 End Property
 
 Public Property Let Visible(ByVal newVisible As Boolean)
-  Extender.Visible = newVisible
+    Extender.Visible = newVisible
 End Property
 
 Public Property Get LineWidth() As Single
-  LineWidth = m_LineWidth
+    LineWidth = m_LineWidth
 End Property
 
 Public Property Let LineWidth(ByVal NewLineWidth As Single)
-  m_LineWidth = NewLineWidth
-  PropertyChanged "LineWidth"
-  Refresh
+    m_LineWidth = NewLineWidth
+    PropertyChanged "LineWidth"
+    Refresh
 End Property
 
 Public Property Get LineStyle() As DashStyle
-  LineStyle = m_LineStyle
+    LineStyle = m_LineStyle
 End Property
 
 Public Property Let LineStyle(ByVal NewLineStyle As DashStyle)
-  m_LineStyle = NewLineStyle
-  PropertyChanged "LineStyle"
-  Refresh
+    m_LineStyle = NewLineStyle
+    PropertyChanged "LineStyle"
+    Refresh
 End Property
 
 Public Property Get LineOpacity() As Long
-  LineOpacity = m_LineOpacity
+    LineOpacity = m_LineOpacity
 End Property
 
 Public Property Let LineOpacity(ByVal NewLineOpacity As Long)
-  m_LineOpacity = NewLineOpacity
-  PropertyChanged "LineOpacity"
-  Refresh
+    m_LineOpacity = NewLineOpacity
+    PropertyChanged "LineOpacity"
+    Refresh
 End Property
 
 Public Property Get LineStartCap() As LineCap
-  LineStartCap = m_LineStartCap
+    LineStartCap = m_LineStartCap
 End Property
 
 Public Property Let LineStartCap(ByVal NewLineStartCap As LineCap)
-  m_LineStartCap = NewLineStartCap
-  PropertyChanged "LineStartCap"
-  Refresh
+    m_LineStartCap = NewLineStartCap
+    PropertyChanged "LineStartCap"
+    Refresh
 End Property
 
 Public Property Get LineEndCap() As LineCap
-  LineEndCap = m_LineEndCap
+    LineEndCap = m_LineEndCap
 End Property
 
 Public Property Let LineEndCap(ByVal NewLineEndCap As LineCap)
-  m_LineEndCap = NewLineEndCap
-  PropertyChanged "LineEndCap"
-  Refresh
+    m_LineEndCap = NewLineEndCap
+    PropertyChanged "LineEndCap"
+    Refresh
 End Property
 
 Public Property Get LineStartColor() As OLE_COLOR
-  LineStartColor = m_LineStartColor
+    LineStartColor = m_LineStartColor
 End Property
 
 Public Property Let LineStartColor(ByVal NewLineStartColor As OLE_COLOR)
-  m_LineStartColor = NewLineStartColor
-  PropertyChanged "LineStartColor"
-  Refresh
+    m_LineStartColor = NewLineStartColor
+    PropertyChanged "LineStartColor"
+    Refresh
 End Property
 
 Public Property Get LineEndColor() As OLE_COLOR
-  LineEndColor = m_LineEndColor
+    LineEndColor = m_LineEndColor
 End Property
 
 Public Property Let LineEndColor(ByVal NewLineEndColor As OLE_COLOR)
-  m_LineEndColor = NewLineEndColor
-  PropertyChanged "LineEndColor"
-  Refresh
+    m_LineEndColor = NewLineEndColor
+    PropertyChanged "LineEndColor"
+    Refresh
 End Property
 
 Public Property Get LineSideDefault() As tSide
-  LineSideDefault = m_DefaultSide
+    LineSideDefault = m_DefaultSide
 End Property
 
 Public Property Let LineSideDefault(ByVal NewDefaultSide As tSide)
-  m_DefaultSide = NewDefaultSide
-  PropertyChanged "LineSideDefault"
-  Refresh
+    m_DefaultSide = NewDefaultSide
+    PropertyChanged "LineSideDefault"
+    Refresh
 End Property
 
 Public Property Get ColsMoveable() As Boolean
-  ColsMoveable = m_ColsMoveable
+    ColsMoveable = m_ColsMoveable
 End Property
 
 Public Property Let ColsMoveable(ByVal NewColsMoveable As Boolean)
-  m_ColsMoveable = NewColsMoveable
-  PropertyChanged "ColsMoveable"
-  Refresh
+    m_ColsMoveable = NewColsMoveable
+    PropertyChanged "ColsMoveable"
+    Refresh
 End Property
 
 Public Property Get FontOpacity() As Long
-  FontOpacity = m_FontOpacity
+    FontOpacity = m_FontOpacity
 End Property
 
 Public Property Let FontOpacity(ByVal NewFontOpacity As Long)
-  m_FontOpacity = NewFontOpacity
-  PropertyChanged "FontOpacity"
-  Refresh
+    m_FontOpacity = NewFontOpacity
+    PropertyChanged "FontOpacity"
+    Refresh
 End Property
-
-
-
-
-
-
-
-
-
-'\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/
-'  --- All folded content will be temporary put under this lines ---
-'/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
-'CODEFOLD STORAGE:
-'CODEFOLD STORAGE END:
-'\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/
-'--- If you're Subclassing: Move the CODEFOLD STORAGE up as needed ---
-'/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
-
-
-
-
-
-
-
-
-
-
-
-
-
